@@ -1,244 +1,130 @@
 # ============================================================
 # Ghost Appointments — مواعيد الشبح
-# إدارة المواعيد والاجتماعات
+# إدارة المواعيد والتذكير
 # ============================================================
-
-import os
 import json
-import logging
+import os
 from datetime import datetime, timedelta
-from config import OWNER_NAME, GHOST_NAME
-
-logger = logging.getLogger(__name__)
+from config import OWNER_NAME
 
 
 class GhostAppointments:
-    """مواعيد Ghost — إدارة المواعيد"""
+    """مواعيد Ghost — بيعمل منبه لنصال"""
 
-    def __init__(self, memory=None):
+    def __init__(self, memory=None, brain=None):
         self.memory = memory
-        self.appointments_file = os.environ.get(
-            "APPOINTMENTS_FILE", "data/appointments.json"
-        )
+        self.brain = brain
+        self.appointments_file = "data/appointments.json"
         self.appointments = []
-        self.reminder_before = int(
-            os.environ.get("APPOINTMENT_REMINDER_MINUTES", "15")
-        )
-        self._load_appointments()
+        self.load()
 
-    def _load_appointments(self):
-        """تحميل المواعيد من الملف"""
-        try:
-            os.makedirs(
-                os.path.dirname(self.appointments_file), exist_ok=True
-            )
-            if os.path.exists(self.appointments_file):
-                with open(self.appointments_file, "r",
-                          encoding="utf-8") as f:
+    def load(self):
+        """تحميل المواعيد"""
+        if os.path.exists(self.appointments_file):
+            try:
+                with open(self.appointments_file, "r", encoding="utf-8") as f:
                     self.appointments = json.load(f)
-                logger.info(
-                    f"📅 تم تحميل {len(self.appointments)} موعد"
-                )
-            else:
+            except (json.JSONDecodeError, FileNotFoundError):
                 self.appointments = []
-                self._save_appointments()
-        except Exception as e:
-            logger.error(f"❌ خطأ بتحميل المواعيد: {e}")
+        else:
+            os.makedirs(os.path.dirname(self.appointments_file), exist_ok=True)
             self.appointments = []
 
-    def _save_appointments(self):
-        """حفظ المواعيد بالملف"""
-        try:
-            os.makedirs(
-                os.path.dirname(self.appointments_file), exist_ok=True
-            )
-            with open(self.appointments_file, "w",
-                      encoding="utf-8") as f:
-                json.dump(
-                    self.appointments, f,
-                    ensure_ascii=False, indent=2
-                )
-            logger.info(
-                f"📅 تم حفظ {len(self.appointments)} موعد"
-            )
-        except Exception as e:
-            logger.error(f"❌ خطأ بحفظ المواعيد: {e}")
+    def save(self):
+        """حفظ المواعيد"""
+        os.makedirs(os.path.dirname(self.appointments_file), exist_ok=True)
+        with open(self.appointments_file, "w", encoding="utf-8") as f:
+            json.dump(self.appointments, f, ensure_ascii=False, indent=2)
 
-    def add_appointment(self, title, date_time, duration_minutes=60,
-                        location="", description="", attendees=None,
-                        reminder_minutes=None):
+    def add_appointment(self, title, date_time, location="",
+                         description="", reminder_minutes=15,
+                         category="general"):
         """إضافة موعد جديد"""
-        if reminder_minutes is None:
-            reminder_minutes = self.reminder_before
-
         appointment = {
-            "id": f"apt_{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            "id": len(self.appointments) + 1,
             "title": title,
             "date_time": date_time,
-            "duration_minutes": duration_minutes,
             "location": location,
             "description": description,
-            "attendees": attendees or [],
             "reminder_minutes": reminder_minutes,
-            "created_at": datetime.now().isoformat(),
-            "status": "scheduled",
-            "reminded": False
+            "category": category,
+            "status": "upcoming",
+            "created_at": str(datetime.now()),
         }
-
         self.appointments.append(appointment)
-        self._save_appointments()
+        self.save()
 
-        logger.info(f"📅 موعد جديد: {title}")
+        # علّم الذاكرة
+        if self.memory:
+            self.memory.learn(
+                f"appointment_{appointment['id']}",
+                f"{title} — {date_time}",
+                category="appointments",
+                source="owner"
+            )
+
         return appointment
 
     def cancel_appointment(self, appointment_id):
         """إلغاء موعد"""
-        for apt in self.appointments:
-            if apt["id"] == appointment_id:
-                apt["status"] = "cancelled"
-                self._save_appointments()
-                logger.info(f"❌ موعد ملغى: {apt['title']}")
-                return apt
-
-        logger.warning(f"⚠️ موعد غير موجود: {appointment_id}")
+        for appt in self.appointments:
+            if appt["id"] == appointment_id:
+                appt["status"] = "cancelled"
+                self.save()
+                return appt
         return None
 
-    def complete_appointment(self, appointment_id):
-        """إكمال موعد"""
-        for apt in self.appointments:
-            if apt["id"] == appointment_id:
-                apt["status"] = "completed"
-                self._save_appointments()
-                logger.info(f"✅ موعد مكتمل: {apt['title']}")
-                return apt
+    def delete_appointment(self, appointment_id):
+        """حذف موعد"""
+        self.appointments = [
+            a for a in self.appointments if a["id"] != appointment_id
+        ]
+        self.save()
+        return True
 
-        return None
-
-    def get_upcoming(self, days=7):
+    def get_upcoming(self, days=7, category=None):
         """المواعيد القادمة"""
         now = datetime.now()
         future = now + timedelta(days=days)
-
         upcoming = []
-        for apt in self.appointments:
-            if apt["status"] != "scheduled":
-                continue
-            try:
-                apt_dt = datetime.fromisoformat(apt["date_time"])
-                if now <= apt_dt <= future:
-                    upcoming.append(apt)
-            except (ValueError, TypeError):
-                continue
+        for appt in self.appointments:
+            if appt["status"] != "cancelled":
+                try:
+                    appt_dt = datetime.fromisoformat(appt["date_time"])
+                    if now <= appt_dt <= future:
+                        upcoming.append(appt)
+                except (ValueError, TypeError):
+                    continue
+        if category:
+            upcoming = [a for a in upcoming
+                       if a.get("category") == category]
+        return sorted(upcoming, key=lambda a: a.get("date_time", ""))
 
-        upcoming.sort(key=lambda x: x["date_time"])
-        return upcoming
+    def get_all(self):
+        """كل المواعيد"""
+        return self.appointments
 
-    def get_today_appointments(self):
-        """مواعيد اليوم"""
-        today = datetime.now().date()
-        today_apts = []
-
-        for apt in self.appointments:
-            if apt["status"] != "scheduled":
-                continue
-            try:
-                apt_dt = datetime.fromisoformat(apt["date_time"])
-                if apt_dt.date() == today:
-                    today_apts.append(apt)
-            except (ValueError, TypeError):
-                continue
-
-        today_apts.sort(key=lambda x: x["date_time"])
-        return today_apts
-
-    def get_reminders(self):
-        """المواعيد اللي لازم نتذكّرها"""
+    def check_reminders(self):
+        """تحقق من التذكيرات"""
         now = datetime.now()
         reminders = []
-
-        for apt in self.appointments:
-            if apt["status"] != "scheduled":
-                continue
-            if apt.get("reminded"):
-                continue
-
-            try:
-                apt_dt = datetime.fromisoformat(apt["date_time"])
-                remind_at = apt_dt - timedelta(
-                    minutes=apt.get("reminder_minutes",
-                                    self.reminder_before)
-                )
-
-                if now >= remind_at and now <= apt_dt:
-                    reminders.append(apt)
-                    apt["reminded"] = True
-            except (ValueError, TypeError):
-                continue
-
-        if reminders:
-            self._save_appointments()
-
+        for appt in self.appointments:
+            if appt["status"] != "cancelled":
+                try:
+                    appt_dt = datetime.fromisoformat(appt["date_time"])
+                    reminder_time = appt_dt - timedelta(
+                        minutes=appt.get("reminder_minutes", 15)
+                    )
+                    if now >= reminder_time and now < appt_dt:
+                        reminders.append(appt)
+                except (ValueError, TypeError):
+                    continue
         return reminders
 
-    def format_appointments_list(self, appointments=None, lang="lb"):
-        """تنسيق قائمة المواعيد"""
-        if appointments is None:
-            appointments = self.get_upcoming()
-
-        if not appointments:
-            if lang == "lb":
-                return "📅 ما في مواعيد — يومك فاضي حبيبي! 👻"
-            elif lang == "ar":
-                return "📅 لا توجد مواعيد — يومك حر! 👻"
-            else:
-                return "📅 No appointments — you're free! 👻"
-
-        lines = []
-        if lang == "lb":
-            lines.append(f"📅 مواعيدك يا {OWNER_NAME}:")
-        elif lang == "ar":
-            lines.append(f"📅 مواعيدك يا {OWNER_NAME}:")
-        else:
-            lines.append(f"📅 Appointments for {OWNER_NAME}:")
-
-        status_emoji = {
-            "scheduled": "🕐", "completed": "✅",
-            "cancelled": "❌"
-        }
-
-        for i, apt in enumerate(appointments, 1):
-            emoji = status_emoji.get(apt["status"], "⚪")
-            try:
-                dt = datetime.fromisoformat(apt["date_time"])
-                dt_str = dt.strftime("%m/%d %H:%M")
-            except (ValueError, TypeError):
-                dt_str = "—"
-
-            duration = apt.get("duration_minutes", 60)
-            location = apt.get("location", "")
-            loc_str = f" 📍{location}" if location else ""
-
-            lines.append(
-                f"  {i}. {emoji} {apt['title']} — "
-                f"📅 {dt_str} ({duration}د){loc_str}"
-            )
-
-        return "\n".join(lines)
-
-    def get_appointments_summary(self, lang="lb"):
-        """ملخص المواعيد"""
-        today = len(self.get_today_appointments())
-        upcoming = len(self.get_upcoming(days=7))
-        cancelled = len(
-            [a for a in self.appointments if a["status"] == "cancelled"]
-        )
-
-        if lang == "lb":
-            return (f"📅 {today} اليوم | 📆 {upcoming} الأسبوع | "
-                    f"❌ {cancelled} ملغى")
-        elif lang == "ar":
-            return (f"📅 {today} اليوم | 📆 {upcoming} الأسبوع | "
-                    f"❌ {cancelled} ملغى")
-        else:
-            return (f"📅 {today} today | 📆 {upcoming} this week | "
-                    f"❌ {cancelled} cancelled")
+    def get_status(self):
+        """حالة المواعيد"""
+        upcoming = len([a for a in self.appointments
+                       if a["status"] == "upcoming"])
+        cancelled = len([a for a in self.appointments
+                        if a["status"] == "cancelled"])
+        return f"✅ {upcoming} قادمة | {cancelled} ملغاة | المجموع: {len(self.appointments)}"
