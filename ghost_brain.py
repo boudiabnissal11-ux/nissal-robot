@@ -1,5 +1,6 @@
-# ghost_brain.py - عقل Ghost - صنع في شوف - للاستاذ نصال
-import json, os, re, random
+# ghost_brain.py - عقل Ghost النهائي المحمي - ملك نصال
+import json
+import os
 from datetime import datetime
 
 class GhostBrain:
@@ -10,51 +11,69 @@ class GhostBrain:
             try:
                 with open("ghost_knowledge.json", 'r', encoding='utf-8') as f:
                     self.knowledge = json.load(f)
-            except: pass
+            except:
+                pass
 
     def save(self):
         with open("ghost_knowledge.json", 'w', encoding='utf-8') as f:
             json.dump(self.knowledge, f, ensure_ascii=False, indent=2)
 
-    def learn(self, txt):
+    def learn(self, txt, is_owner=False):
+        if not is_owner:
+            return "⛔ ما بقدر احفظ! بس المعلم نصال هو يلي بيعلمني 👑"
+        if not txt.strip():
+            return "شو بدي احفظ يا معلم؟"
         entry = {"text": txt, "time": str(datetime.now())}
-        if any(x in txt for x in ["اذا حدا", "ذكرني", "لما", "اذا"]):
+        if any(x in txt for x in ["اذا", "إذا", "قلي", "قول", "اذا حدا"]):
             self.knowledge["instructions"].append(entry)
         else:
             self.knowledge["facts"].append(entry)
         self.save()
-        return f"حفظت: {txt} - مظبوط؟"
+        return f"✅ حفظت يا معلم: {txt}"
 
-    def forget(self, key):
-        n=0
+    def forget(self, key, is_owner=False):
+        if not is_owner:
+            return "⛔ ما بقدر امحي شي الا بأمر من المعلم نصال!"
+        n = 0
         for c in ["facts", "instructions"]:
-            b=len(self.knowledge[c])
-            self.knowledge[c]=[x for x in self.knowledge[c] if key not in x["text"]]
-            n+=b-len(self.knowledge[c])
+            b = len(self.knowledge[c])
+            self.knowledge[c] = [x for x in self.knowledge[c] if key not in x["text"]]
+            n += b - len(self.knowledge[c])
         self.save()
-        return f"انمحت {n} شغلة فيها {key}" if n>0 else f"ما لقيت {key}"
+        if n > 0:
+            return f"🗑️ مسحت {n} شغلة فيها ({key}) يا معلم"
+        else:
+            return f"ما لقيت شي فيه ({key})"
 
     def recall(self):
         if not self.knowledge["facts"] and not self.knowledge["instructions"]:
-            return "بعد ما حفظت شي"
-        t="يلي حافظو:\n"
-        for f in self.knowledge["facts"][-5:]: t+=f"- {f['text']}\n"
-        for f in self.knowledge["instructions"][-5:]: t+=f"- [امر] {f['text']}\n"
+            return "🧠 ذاكرتي فاضية يا معلم، علمني شي!"
+        t = "🧠 شو متذكر يا معلم نصال:\n"
+        for f in self.knowledge["facts"][-10:]:
+            t += f"- {f['text']}\n"
+        for f in self.knowledge["instructions"][-10:]:
+            t += f"📌 {f['text']}\n"
         return t
 
-    def respond(self, txt):
-        low=txt.lower()
-        if "احفظ" in low:
-            c=re.sub(r'^(احفظ|احفظ هيدي|ghost احفظ)', '', txt, flags=re.I).strip()
-            return self.learn(c) if c else "شو بدك احفظ؟"
-        if "انسى" in low or "امحي" in low or "شيل" in low:
-            k=re.sub(r'.*(انسى|امحي|شيل)', '', txt, flags=re.I).strip()
-            return self.forget(k) if k else "شو بدك انسى؟"
-        if "شو حفظت" in low or "شو متذكر" in low:
+    def learn_from_file(self, text, is_owner=False):
+        # هيدي ميزة الفيديو والمقال يلي طلبتها
+        if not is_owner:
+            return "⛔ هيدي ميزة التعلم من الملفات بس للمعلم نصال!"
+        return "✅ حاضر يا معلم! عطيني الرابط او النص وانا بقراه وبلخصو وبتعلم منو وبطور حالي فيه 👻"
+
+    def respond(self, text, is_owner=False):
+        if "احفظ" in text:
+            clean = text.replace("احفظ", "").strip()
+            return self.learn(clean, is_owner)
+
+        if "انسى" in text or "امحي" in text:
+            clean = text.replace("انسى", "").replace("امحي", "").strip()
+            return self.forget(clean, is_owner)
+
+        if "شو حفظت" in text or "شو متذكر" in text:
             return self.recall()
-        if len(txt)>4:
-            for f in self.knowledge["facts"]:
-                if len(f["text"].split())>0 and f["text"].split()[0] in txt:
-                    return f["text"] + " [نبرة واثقة]"
-            return f"هيدي بدها تأكيد من الاستاذ {self.owner}، خليني اتأكد وبرجعلك بجواب دقيق"
-        return f"هلا يا {self.owner} معك Ghost Private"
+
+        if "اقرا" in text or "اتعلم من" in text or "حضر" in text or "اتعلم" in text:
+            return self.learn_from_file(text, is_owner)
+
+        return None
