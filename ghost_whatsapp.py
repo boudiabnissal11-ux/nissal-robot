@@ -1,13 +1,14 @@
 # ============================================================
 # Ghost WhatsApp — واتساب الشبح
-# اتصال واتساب عبر Twilio
+# جسر واتساب → تيليجرام
 # ============================================================
 
 import os
 import logging
 from datetime import datetime
 from config import (
-    OWNER_NAME, GHOST_NAME, OWNER_PHONE, NS_LINKS
+    OWNER_NAME, GHOST_NAME, OWNER_PHONE,
+    NS_LINKS, SUB_REMINDER_DAYS
 )
 
 logger = logging.getLogger(__name__)
@@ -21,22 +22,27 @@ except ImportError:
 
 
 class GhostWhatsApp:
-    """واتساب Ghost — اتصال عبر Twilio"""
+    """واتساب Ghost — جسر واتساب→تيليجرام"""
 
-    def __init__(self, brain=None, memory=None, personality=None,
-                 tasks=None, appointments=None, subscriptions=None,
-                 pay=None):
+    def __init__(self, brain=None, memory=None,
+                 tasks=None, appointments=None,
+                 subscriptions=None, telegram=None):
         self.brain = brain
         self.memory = memory
-        self.personality = personality
         self.tasks = tasks
         self.appointments = appointments
         self.subscriptions = subscriptions
-        self.pay = pay
+        self.telegram = telegram  # جسر لتيليجرام
 
-        self.account_sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
-        self.auth_token = os.environ.get("TWILIO_AUTH_TOKEN", "")
-        self.phone_number = os.environ.get("TWILIO_PHONE_NUMBER", "")
+        self.account_sid = os.environ.get(
+            "TWILIO_ACCOUNT_SID", ""
+        )
+        self.auth_token = os.environ.get(
+            "TWILIO_AUTH_TOKEN", ""
+        )
+        self.phone_number = os.environ.get(
+            "TWILIO_PHONE_NUMBER", ""
+        )
         self.owner_phone = OWNER_PHONE
         self.client = None
 
@@ -45,24 +51,88 @@ class GhostWhatsApp:
                 self.client = TwilioClient(
                     self.account_sid, self.auth_token
                 )
-                logger.info("✅ Twilio جاهز")
+                logger.info("✅ Twilio WhatsApp جاهز")
             except Exception as e:
-                logger.error(f"❌ خطأ Twilio: {e}")
+                logger.error(f"❌ خطأ Twilio WhatsApp: {e}")
 
-    def _is_owner(self, phone):
-        """هل الرقم هو رقم المالك؟"""
-        if not phone or not self.owner_phone:
-            return False
-        return phone.replace("+", "").replace(" ", "").replace(
-            "-", ""
-        ) == self.owner_phone.replace("+", "").replace(
-            " ", ""
-        ).replace("-", "")
+    # ========================================================
+    # استقبال رسائل واتساب
+    # ========================================================
+
+    def handle_incoming(self, from_phone, message,
+                        profile_name=None):
+        """معالجة رسالة واتساب واردة — تحويل لتيليجرام"""
+        logger.info(
+            f"💬 واتساب من {from_phone}: {message}"
+        )
+
+        # حفظ بالذاكرة
+        if self.memory:
+            self.memory.save_message(
+                sender=from_phone,
+                message=message,
+                platform="whatsapp",
+                is_owner=False
+            )
+
+        # --- الجسر: تحويل لتيليجرام ---
+        if self.telegram:
+            # استخدام async بحدث لاحق
+            self._pending_whatsapp = {
+                "phone": from_phone,
+                "message": message,
+                "name": profile_name or from_phone
+            }
+            logger.info(
+                "📩 رسالة واتساب جاهزة للتحويل لتيليجرام"
+            )
+            return self._format_for_telegram(
+                from_phone, message, profile_name
+            )
+
+        # بدون جسر — رد مباشر على واتساب
+        if self.brain:
+            response = self.brain.think(
+                message=message,
+                sender_name=profile_name or from_phone,
+                platform="whatsapp",
+                lang="ar"
+            )
+            return response
+
+        return "👻 Ghost هنا"
+
+    def _format_for_telegram(self, from_phone, message,
+                             profile_name=None):
+        """تنسيق رسالة واتساب لتيليجرام"""
+        name = profile_name or from_phone
+        text = (
+            f"💬 رسالة واتساب جديدة!\n\n"
+            f"📞 من: {name}\n"
+            f"📱 رقم: {from_phone}\n"
+            f"📝 الرسالة: {message}\n\n"
+        )
+
+        # يلقي رد Ghost
+        if self.brain:
+            response = self.brain.think(
+                message=message,
+                sender_name=name,
+                platform="whatsapp",
+                lang="ar"
+            )
+            text += f"👻 رد Ghost:\n{response}"
+
+        return text
+
+    # ========================================================
+    # إرسال رسائل واتساب
+    # ========================================================
 
     def send_message(self, to_phone, message):
-        """إرسال رسالة واتساب"""
+        """إرسال رسالة واتساب عبر Twilio"""
         if not self.client:
-            logger.error("❌ Twilio مو جاهز")
+            logger.error("❌ Twilio WhatsApp مو جاهز")
             return False
 
         try:
@@ -71,124 +141,90 @@ class GhostWhatsApp:
                 from_=f"whatsapp:{self.phone_number}",
                 to=f"whatsapp:{to_phone}"
             )
-            logger.info(f"💬 رسالة واتساب مرسلة لـ {to_phone}")
+            logger.info(
+                f"💬 واتساب مرسل لـ {to_phone}"
+            )
             return True
         except Exception as e:
-            logger.error(f"❌ خطأ بإرسال واتساب: {e}")
+            logger.error(
+                f"❌ خطأ إرسال واتساب: {e}"
+            )
             return False
 
-    def handle_incoming(self, from_phone, message_body):
-        """معالجة رسالة واردة"""
-        is_owner = self._is_owner(from_phone)
-
-        if self.brain:
-            response = self.brain.think(
-                message=message_body,
-                sender_name=OWNER_NAME if is_owner else None,
-                platform="whatsapp",
-                lang=None
+    def send_owner_whatsapp(self, message):
+        """إرسال واتساب للمالك"""
+        if self.owner_phone:
+            return self.send_message(
+                self.owner_phone, message
             )
-        else:
-            if is_owner:
-                response = "👻 الدماغ مو جاهز بعد..."
-            else:
-                response = (
-                    f"👻 شكراً لرسالتك! للاشتراك بـ NSsFOREX:\n"
-                    f"📱 {NS_LINKS['telegram']}\n"
-                    f"🌐 {NS_LINKS['linktree']}\n"
-                    f"💬 {NS_LINKS['owner']}"
-                )
+        return False
 
-        self.send_message(from_phone, response)
-        return response
+    # ========================================================
+    # أوامر واتساب
+    # ========================================================
 
-    def handle_start(self, from_phone):
-        """رسالة بداية واتساب"""
-        is_owner = self._is_owner(from_phone)
+    def handle_command(self, from_phone, command):
+        """معالجة أوامر واتساب"""
+        cmd = command.strip().lower()
 
-        if is_owner:
-            msg = (
-                f"👻 أهلا {OWNER_NAME}! أنا Ghost — شبحك الشخصي!\n\n"
-                f"بقدر أساعدك بـ:\n"
-                f"📋 المهام\n📅 المواعيد\n👥 الاشتراكات\n"
-                f"💳 الدفعات\n🧠 الذواكر\n\n"
-                f"أو بس حكيلي شو بدك! 👻"
-            )
-        else:
-            msg = (
-                f"👻 أهلا! أنا Ghost — بوت NSsFOREX!\n\n"
-                f"للاشتراك والتفاصيل:\n"
-                f"📱 {NS_LINKS['telegram']}\n"
-                f"🌐 {NS_LINKS['linktree']}\n"
-                f"💬 {NS_LINKS['owner']}"
+        if cmd in ["/start", "/بدء"]:
+            return (
+                f"أهلاً! أنا {GHOST_NAME}، "
+                f"المساعد الشخصي لـ {OWNER_NAME} 👻"
             )
 
-        self.send_message(from_phone, msg)
-        return msg
-
-    def send_reminder(self, to_phone, message):
-        """إرسال تذكير واتساب"""
-        return self.send_message(to_phone, f"⏰ {message}")
-
-    def send_subscription_reminder(self, phone, reminder_msg):
-        """إرسال تذكير اشتراك"""
-        return self.send_message(phone, reminder_msg)
-
-    def check_and_remind(self):
-        """فحص وإرسال التذكيرات"""
-        reminders_sent = []
-
-        # تذكيرات المهام للمالك
-        if self.tasks:
-            task_reminders = self.tasks.get_reminders()
-            for task in task_reminders:
-                msg = f"⏰ تذكير مهمة: {task['title']}"
-                if self.send_reminder(self.owner_phone, msg):
-                    reminders_sent.append(("task", task["id"]))
-
-        # تذكيرات المواعيد للمالك
-        if self.appointments:
-            apt_reminders = self.appointments.get_reminders()
-            for apt in apt_reminders:
-                msg = f"📅 موعد قريب: {apt['title']}"
-                if self.send_reminder(self.owner_phone, msg):
-                    reminders_sent.append(
-                        ("appointment", apt["id"])
-                    )
-
-        # تذكيرات الاشتراكات
-        if self.subscriptions:
-            sub_reminders = self.subscriptions.get_reminders(
-                lang="lb"
+        elif cmd in ["/help", "/مساعدة"]:
+            return (
+                "👻 أوامر واتساب:\n\n"
+                "/بدء — ترحيب\n"
+                "/اشتراك — معلومات NSsFOREX\n"
+                "/تواصل — التواصل مع المالك\n"
+                "أو ارسل أي رسالة!"
             )
-            for reminder in sub_reminders:
-                client_phone = reminder.get(
-                    "subscription", {}
-                ).get("client_id", "")
-                platform = reminder.get(
-                    "subscription", {}
-                ).get("platform", "telegram")
-                if platform == "whatsapp" and client_phone:
-                    self.send_subscription_reminder(
-                        client_phone, reminder["message"]
-                    )
-                    reminders_sent.append(
-                        ("sub", reminder["subscription"]["id"])
-                    )
-                # نسخة للمالك
-                client_name = reminder.get(
-                    "subscription", {}
-                ).get("client_name", "")
-                owner_msg = f"📋 تذكير اشتراك: {client_name}"
-                self.send_reminder(
-                    self.owner_phone, owner_msg
-                )
 
-        return reminders_sent
+        elif cmd in ["/nss", "/اشتراك"]:
+            return (
+                f"📈 NSsFOREX — اشتراك!\n\n"
+                f"تيليجرام: {NS_LINKS['telegram']}\n"
+                f"Linktree: {NS_LINKS['linktree']}\n"
+                f"نيسال: {NS_LINKS['owner']}"
+            )
 
-    def format_webhook_response(self, message):
-        """تنسيق رد الويبهوك"""
-        return {"message": message}
+        elif cmd in ["/contact", "/تواصل"]:
+            return (
+                f"📞 تواصل مع {OWNER_NAME}:\n"
+                f"تيليجرام: {NS_LINKS['owner']}"
+            )
+
+        return None
+
+    # ========================================================
+    # تذكير الاشتراكات
+    # ========================================================
+
+    def send_subscription_reminder(self, to_phone, sub_name,
+                                    days_left, price=""):
+        """إرسال تذكير اشتراك على واتساب"""
+        text = (
+            f"⏰ تذكير اشتراك!\n\n"
+            f"📋 {sub_name}\n"
+            f"📅 باقي {days_left} يوم\n"
+        )
+        if price:
+            text += f"💰 السعر: {price}\n"
+
+        text += (
+            f"\n📈 جدّد عبر NSsFOREX:\n"
+            f"{NS_LINKS['linktree']}\n"
+            f"{NS_LINKS['telegram']}\n"
+            f"{NS_LINKS['owner']}"
+        )
+
+        return self.send_message(to_phone, text)
+
+    # ========================================================
+    # الحالة
+    # ========================================================
 
     def get_status(self):
         """حالة واتساب"""
@@ -196,10 +232,10 @@ class GhostWhatsApp:
             return "❌ Twilio مو مثبت"
 
         if not self.client:
-            return "⚠️ Twilio ناقص مفاتيح"
+            return "⚠️ Twilio WhatsApp ناقص مفاتيح"
 
-        has_phone = bool(self.phone_number)
-        if has_phone:
-            return f"✅ واتساب جاهز — {self.phone_number}"
-        else:
-            return "⚠️ Twilio ناقص رقم هاتف"
+        has_bridge = "✅" if self.telegram else "❌"
+        return (
+            f"✅ واتساب جاهز — "
+            f"جسر تيليجرام: {has_bridge}"
+        )
