@@ -6,18 +6,17 @@ def ar(text):
     reshaped = arabic_reshaper.reshape(text)
     return get_display(reshaped)
 
-print(ar("أهلا يا نصال! أنا Ghost جاهز 👻"))
-print(ar("اكتب باي للخروج"))
+print(ar("أهلا يا نصال! Ghost جاهز 👻"))
+print(ar("تكلم بالعربي"))
 
 name = "نصال"
 brain = GhostBrain()
 
 while True:
-    cmd = input(f"({name}) > ")
+    cmd = input(f"{name} > ")
     if cmd == "باي" or cmd == "bye":
         print(ar("باي يا نصال بشوفك بعدين 👋"))
         break
-    
-    # بياخد الجواب من المخ وبيظبطو عربي
+
     answer = brain.response(cmd, is_owner=True)
     print(ar(f"Ghost: {answer}"))
