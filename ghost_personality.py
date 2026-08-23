@@ -1,0 +1,185 @@
+# ============================================================
+# Ghost Personality — شخصية الشبح
+# أسلوب نصال — لبناني، فصحى، إنجليزي
+# ============================================================
+
+import re
+from datetime import datetime
+from config import GHOST_PERSONALITY, DEFAULT_LANGUAGE, OWNER_NAME
+
+
+class GhostPersonality:
+    """شخصية Ghost — بيحكي بأسلوب نصال"""
+
+    # علامات لبنانية (عمية)
+    LEBANESE_MARKERS = [
+        "شو", "ليش", "هيك", "هاد", "هادي", "هول", "هولة",
+        "عمية", "يا عمي", "والعافية", "خلص", "طيب", "أوكي",
+        "بدك", "بدي", "بتحكي", "بنروح", "شلون", "غشيم",
+        "يا نصال", "حبيبي", "يا عمري", "شريكي", "يا سيدي",
+        "كيفك", "شو الأخبار", "ممتاز", "تمام", "يا ريت",
+        "هلق", "بعدنا", "عنا", "إلنا", "علينا", "محلى",
+        "يا عيني", "وشو", "إمتى", "هون", "هونيك",
+    ]
+
+    # علامات فصحى
+    FUSHA_MARKERS = [
+        "ماذا", "لماذا", "كيف", "أين", "متى", "من",
+        "الذي", "التي", "اللذان", "اللتان",
+        "إنّ", "أنّ", "لن", "لم", "قد", "كان",
+        "وجب", "ينبغي", "يرجى", "شكراً جزيلاً",
+        "السلام عليكم", "أهلاً وسهلاً",
+    ]
+
+    # علامات إنجليزي
+    ENGLISH_MARKERS = [
+        "what", "how", "why", "when", "where", "who",
+        "please", "thank", "hello", "hey", "hi",
+        "can you", "i want", "i need", "help",
+        "task", "meeting", "subscription", "payment",
+    ]
+
+    def __init__(self):
+        self.personality = GHOST_PERSONALITY
+        self.default_lang = DEFAULT_LANGUAGE
+        self.learned_style = {}
+
+    def detect_language(self, text):
+        """كشف لغة النص تلقائياً"""
+        text_lower = text.lower()
+
+        # عدّ العلامات لكل لغة
+        lb_score = sum(1 for m in self.LEBANESE_MARKERS
+                      if m in text_lower)
+        ar_score = sum(1 for m in self.FUSHA_MARKERS
+                       if m in text_lower)
+        en_score = sum(1 for m in self.ENGLISH_MARKERS
+                       if m in text_lower)
+
+        # تحقق من الحروف الإنجليزية
+        if re.search(r'[a-zA-Z]{3,}', text):
+            en_score += 2
+
+        # لو نصال حكى — لبناني
+        if OWNER_NAME in text or "@NISSALBOUDIAB" in text:
+            lb_score += 5
+
+        scores = {"lb": lb_score, "ar": ar_score, "en": en_score}
+        detected = max(scores, key=scores.get)
+
+        # لو كلهم صفر — الافتراضي
+        if scores[detected] == 0:
+            return self.default_lang
+
+        return detected
+
+    def get_system_prompt(self, lang=None, sender_name=None,
+                          platform="telegram"):
+        """بناء prompt النظام حسب اللغة والسياق"""
+        if lang is None:
+            lang = self.default_lang
+
+        base = self.personality
+
+        # إضافات حسب اللغة
+        if lang == "lb":
+            lang_instruction = (
+                "\n\nمهم: رد بلبناني عمية. "
+                "استخدم كلمات مثل: حبيبي، يا عمي، خلص، طيب، "
+                "هيك، هاد، شو، ليش. "
+                "أسلوبك أخوي ومباشر مثل نصال."
+            )
+        elif lang == "ar":
+            lang_instruction = (
+                "\n\nمهم: رد بالفصحى. "
+                "استخدم لغة عربية فصحى واضحة. "
+                "كن مهذباً ومحترماً."
+            )
+        else:
+            lang_instruction = (
+                "\n\nImportant: Respond in English. "
+                "Be direct, professional, and helpful."
+            )
+
+        # إضافات حسب المرسل
+        sender_instruction = ""
+        if sender_name and sender_name != OWNER_NAME:
+            sender_instruction = (
+                f"\n\nالمتحدث: {sender_name} — "
+                f"ما هو نصال. كن مهذب بس ما تعطي معلومات شخصية."
+            )
+        elif sender_name == OWNER_NAME:
+            sender_instruction = (
+                f"\n\nالمتحدث: {OWNER_NAME} — "
+                f"هاد صاحبك. عامله باحترام وأخوية."
+            )
+
+        # إضافات حسب المنصة
+        platform_instruction = ""
+        if platform == "whatsapp":
+            platform_instruction = (
+                "\n\nالمنصة: واتساب — ردود قصيرة ومفيدة."
+            )
+        elif platform == "phone":
+            platform_instruction = (
+                "\n\nالمنصة: مكالمة هاتفية — ردود مختصرة وواضحة."
+            )
+
+        return base + lang_instruction + sender_instruction + platform_instruction
+
+    def get_greeting(self, lang=None):
+        """تحية حسب الوقت واللغة"""
+        if lang is None:
+            lang = self.default_lang
+
+        hour = datetime.now().hour
+
+        if lang == "lb":
+            if 5 <= hour < 12:
+                return f"صباح الخير يا {OWNER_NAME}! ☀️ شو الأخبار؟"
+            elif 12 <= hour < 18:
+                return f"أهلا يا {OWNER_NAME}! 🌤️ كيفك اليوم؟"
+            else:
+                return f"مسا الخير يا {OWNER_NAME}! 🌙 شو مسوي؟"
+        elif lang == "ar":
+            if 5 <= hour < 12:
+                return f"صباح الخير يا {OWNER_NAME}! ☀️"
+            elif 12 <= hour < 18:
+                return f"مرحباً يا {OWNER_NAME}! 🌤️"
+            else:
+                return f"مساء الخير يا {OWNER_NAME}! 🌙"
+        else:
+            if 5 <= hour < 12:
+                return f"Good morning {OWNER_NAME}! ☀️"
+            elif 12 <= hour < 18:
+                return f"Hello {OWNER_NAME}! 🌤️"
+            else:
+                return f"Good evening {OWNER_NAME}! 🌙"
+
+    def learn_style(self, text, source="owner"):
+        """تعلّم أسلوب جديد من نصال"""
+        # استخرج كلمات مميزة
+        words = text.split()
+        new_words = [w for w in words if len(w) > 3]
+
+        for word in new_words[:10]:
+            if word not in self.learned_style:
+                self.learned_style[word] = {
+                    "word": word,
+                    "count": 1,
+                    "source": source,
+                    "learned_at": str(datetime.now())
+                }
+            else:
+                self.learned_style[word]["count"] += 1
+
+        return len(new_words)
+
+    def get_learned_words(self, limit=20):
+        """الكلمات اللي تعلّمها"""
+        sorted_words = sorted(
+            self.learned_style.items(),
+            key=lambda x: x[1].get("count", 0),
+            reverse=True
+        )
+        return sorted_words[:limit]
