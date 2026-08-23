@@ -26,11 +26,11 @@ Ghost هو مساعد شخصي ذكي مبني بالبايثون، مصمم خ�
 
 ---
 
-## 🔗 NSsFOREX
+## 🔗 NISsAL 
 
 - تيليجرام: https://t.me/NSsforex777
 - Linktree: https://linktr.ee/NSsFOREX
-- نيسال: https://t.me/NISsALboudiab
+- نصال:  https://t.me/NISsALboudiab
 
 ---
 
