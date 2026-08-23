@@ -2,7 +2,6 @@
 # Ghost Personality — شخصية الشبح
 # أسلوب نصال — لبناني، فصحى، إنجليزي
 # ============================================================
-
 import re
 from datetime import datetime
 from config import GHOST_PERSONALITY, DEFAULT_LANGUAGE, OWNER_NAME
@@ -18,7 +17,7 @@ class GhostPersonality:
         "بدك", "بدي", "بتحكي", "بنروح", "شلون", "غشيم",
         "يا نصال", "حبيبي", "يا عمري", "شريكي", "يا سيدي",
         "كيفك", "شو الأخبار", "ممتاز", "تمام", "يا ريت",
-        "هلق", "بعدنا", "عنا", "إلنا", "علينا", "محلى",
+        "هلّق", "بعدنا", "عنا", "إلنا", "علينا", "محلى",
         "يا عيني", "وشو", "إمتى", "هون", "هونيك",
     ]
 
@@ -50,7 +49,7 @@ class GhostPersonality:
 
         # عدّ العلامات لكل لغة
         lb_score = sum(1 for m in self.LEBANESE_MARKERS
-                      if m in text_lower)
+                       if m in text_lower)
         ar_score = sum(1 for m in self.FUSHA_MARKERS
                        if m in text_lower)
         en_score = sum(1 for m in self.ENGLISH_MARKERS
@@ -61,7 +60,7 @@ class GhostPersonality:
             en_score += 2
 
         # لو نصال حكى — لبناني
-        if OWNER_NAME in text or "@NISSALBOUDIAB" in text:
+        if OWNER_NAME in text or "@NISSALBOUDIAB" in text.upper():
             lb_score += 5
 
         scores = {"lb": lb_score, "ar": ar_score, "en": en_score}
@@ -136,31 +135,42 @@ class GhostPersonality:
 
         if lang == "lb":
             if 5 <= hour < 12:
-                return f"صباح الخير يا {OWNER_NAME}! ☀️ شو الأخبار؟"
+                return "صباح الخير حبيبي! ☀️"
             elif 12 <= hour < 18:
-                return f"أهلا يا {OWNER_NAME}! 🌤️ كيفك اليوم؟"
+                return "مسا النور يا عمي! 🌤️"
             else:
-                return f"مسا الخير يا {OWNER_NAME}! 🌙 شو مسوي؟"
+                return "مسا الخير حبيبي! 🌙"
         elif lang == "ar":
             if 5 <= hour < 12:
-                return f"صباح الخير يا {OWNER_NAME}! ☀️"
+                return "صباح الخير! ☀️"
             elif 12 <= hour < 18:
-                return f"مرحباً يا {OWNER_NAME}! 🌤️"
+                return "مساء النور! 🌤️"
             else:
-                return f"مساء الخير يا {OWNER_NAME}! 🌙"
+                return "مساء الخير! 🌙"
         else:
             if 5 <= hour < 12:
-                return f"Good morning {OWNER_NAME}! ☀️"
+                return "Good morning! ☀️"
             elif 12 <= hour < 18:
-                return f"Hello {OWNER_NAME}! 🌤️"
+                return "Good afternoon! 🌤️"
             else:
-                return f"Good evening {OWNER_NAME}! 🌙"
+                return "Good evening! 🌙"
+
+    def get_farewell(self, lang=None):
+        """وداع حسب اللغة"""
+        if lang is None:
+            lang = self.default_lang
+
+        if lang == "lb":
+            return "مع السلامة حبيبي! 👻"
+        elif lang == "ar":
+            return "مع السلامة! 👻"
+        else:
+            return "Goodbye! 👻"
 
     def learn_style(self, text, source="owner"):
-        """تعلّم أسلوب جديد من نصال"""
-        # استخرج كلمات مميزة
-        words = text.split()
-        new_words = [w for w in words if len(w) > 3]
+        """تعلّم أسلوب المستخدم"""
+        words = re.findall(r'\b\w+\b', text.lower())
+        new_words = [w for w in words if len(w) >= 3]
 
         for word in new_words[:10]:
             if word not in self.learned_style:
@@ -183,3 +193,7 @@ class GhostPersonality:
             reverse=True
         )
         return sorted_words[:limit]
+
+    def get_status(self):
+        """حالة الشخصية"""
+        return f"✅ شخصية جاهزة — لغة: {self.default_lang}"
