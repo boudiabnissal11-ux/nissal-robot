@@ -1,18 +1,17 @@
-print("Hello! I am Nissal Robot 🤖")
+print("Hello! مرحبا! I am Nissal Robot 🤖")
 
-name = input("What is your name? ")
-print(f"Nice to meet you {name}!")
+name = input("What is your name? شو اسمك؟ ")
+print(f"Nice to meet you {name}! تشرفت بمعرفتك!")
 
-# Robot brain
 while True:
-    command = input("Tell me what to do (dance/joke/bye): ")
+    command = input("Tell me what to do (dance-رقص / joke-نكتة / bye-باي): ")
     
-    if command == "dance":
-        print("💃🕺 Beep boop I am dancing!")
-    elif command == "joke":
-        print("Why did the robot go to school? Because his battery was low! 😂")
-    elif command == "bye":
-        print("Bye bye! See you later! 👋")
+    if command == "dance" or command == "رقص":
+        print("💃🕺 Beep boop! عم ارقص! I am dancing!")
+    elif command == "joke" or command == "نكتة":
+        print("Why did the robot go to school? ليش الروبوت راح عالمدرسة؟ Because his battery was low! لأنو بطاريتو ضعيفة! 😂")
+    elif command == "bye" or command == "باي":
+        print("Bye bye! باي باي! See you later! 👋")
         break
     else:
-        print("I don't understand, try again!")
+        print("I don't understand / ما فهمت! Try رقص or dance!")
