@@ -1,38 +1,42 @@
-# robot.py - الجسم - يستعمل عقل Ghost
+# robot.py - جسم Ghost - مربوط بالعقل المحمي
 from ghost_brain import GhostBrain
 
-print("👻 مرحبا! Ghost")
+print("👻 مرحبا! Ghost اشتغل")
 name = input("شو اسمك حبيب؟ ")
-print(f"اهلا وسهلا يا {name}!")
+
+# هون منحدد اذا انت المالك ولا لا
+is_owner = False
+if "نصال" in name or "nissal" in name.lower() or "nصال" in name:
+    is_owner = True
+    print(f"👑 اهلا وسهلا بالمعلم {name}! كل الصلاحيات مفتوحة الك!")
+else:
+    print(f"اهلا وسهلا يا {name}! فيك تحكي معي بس الذاكرة بس للمعلم نصال 👑")
 
 brain = GhostBrain()
 
 while True:
-    command = input(f"({name}) شو بدك يا {name}؟ رقص / نكتة / ذكرني / احفظ: ")
+    command = input(f"({name}) > ")
 
     if not command.strip():
         continue
 
     if command == "رقص" or command == "dance":
-        print("💃 اه رقص Ghost! Booo! Beep boop! 👻")
+        print("💃 Booo! Ghost عم يرقص! 👻")
 
     elif command == "نكتة" or command == "joke":
-        print("😂 مرة واحد راح عند الحلاق، قالو: قلّلي، قالو: ما بتعرف تحكي من قبل؟")
-
-    elif "احفظ" in command or "شو حفظت" in command or "متذكر" in command or "انسى" in command or "امحي" in command:
-        answer = brain.respond(command)
-        print(f"🧠 {answer}")
-
-    elif command == "اسمي" or command == "what's your name" or command == "who are you":
-        print(f"انا Ghost! السكرتير الشخصي لنصال، وهلا عم احكي مع {name}!")
-
-    elif command == "كيفك" or command == "how are you":
-        print(f"تمام كتير! انا منيح يا {name} ❤️")
+        print("😂 مرة واحد راح عند الحلاق، قالو قلّلي، قالو ما بتعرف تحكي من قبل؟")
 
     elif command == "باي" or command == "bye":
-        print(f"باي باي {name}! Ghost راح ينام 😴👻")
+        print(f"باي باي {name}! 😴👻")
         break
 
     else:
-        answer = brain.respond(command)
-        print(f"👻 {answer} يا {name}")
+        answer = brain.respond(command, is_owner=is_owner)
+        if answer:
+            print(answer)
+        else:
+            # دردشة عادية
+            if is_owner:
+                print(f"👻 فهمت يا معلم {name} - {command}")
+            else:
+                print(f"👻 اهلا يا {name} - انا Ghost، سكرتير المعلم نصال!")
