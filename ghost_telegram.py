@@ -1,414 +1,393 @@
 # ============================================================
-# Ghost Telegram — تلغرام الشبح
-# بوت تلغرام — الاتصال الرئيسي
+# Ghost Telegram — تيليجرام الشبح
+# بوت تيليجرام مع مفتاح تشغيل/إيقاف
 # ============================================================
 
 import os
-import asyncio
 import logging
 from datetime import datetime
+from telegram import Update
+from telegram.ext import (
+    Application, CommandHandler, MessageHandler,
+    filters, ContextTypes
+)
 from config import (
-    OWNER_NAME, GHOST_NAME, OWNER_TELEGRAM_ID, NS_LINKS
+    OWNER_NAME, GHOST_NAME, OWNER_TELEGRAM_ID,
+    TELEGRAM_BOT_TOKEN, NS_LINKS, SUB_REMINDER_DAYS
 )
 
 logger = logging.getLogger(__name__)
 
-try:
-    from telegram import Update, Bot
-    from telegram.ext import (
-        Application, CommandHandler, MessageHandler,
-        ContextTypes, filters
-    )
-    TELEGRAM_AVAILABLE = True
-except ImportError:
-    TELEGRAM_AVAILABLE = False
-    logger.warning("⚠️ python-telegram-bot مو مثبت")
-
 
 class GhostTelegram:
-    """تلغرام Ghost — بوت تلغرام"""
+    """تيليجرام Ghost — بوت مع مفتاح تشغيل/إيقاف"""
 
-    def __init__(self, brain=None, memory=None, personality=None,
-                 tasks=None, appointments=None, subscriptions=None,
-                 pay=None):
+    def __init__(self, brain=None, memory=None,
+                 tasks=None, appointments=None,
+                 subscriptions=None, pay=None):
         self.brain = brain
         self.memory = memory
-        self.personality = personality
         self.tasks = tasks
         self.appointments = appointments
         self.subscriptions = subscriptions
         self.pay = pay
 
-        self.token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-        self.owner_id = int(OWNER_TELEGRAM_ID)
+        self.token = TELEGRAM_BOT_TOKEN
         self.app = None
-        self.bot = None
 
-    def _is_owner(self, user_id):
-        """هل المستخدم هو المالك؟"""
-        return user_id == self.owner_id
+        # --- مفتاح التشغيل/الإيقاف ---
+        self.ghost_active = True
 
-    async def start(self, update: Update,
-                    context: ContextTypes.DEFAULT_TYPE):
-        """أمر /start"""
-        user = update.effective_user
-        user_id = user.id
-
-        if self._is_owner(user_id):
-            await update.message.reply_text(
-                f"👻 أهلا {OWNER_NAME}! أنا Ghost — شبحك الشخصي!\n\n"
-                f"بقدر أساعدك بـ:\n"
-                f"📋 المهام\n📅 المواعيد\n👥 الاشتراكات\n"
-                f"💳 الدفعات\n🧠 الذواكر\n\n"
-                f"أو بس حكيلي شو بدك! 👻"
-            )
-        else:
-            await update.message.reply_text(
-                f"👻 أهلا! أنا Ghost — بوت NSsFOREX!\n\n"
-                f"للاشتراك والتفاصيل:\n"
-                f"📱 {NS_LINKS['telegram']}\n"
-                f"🌐 {NS_LINKS['linktree']}\n"
-                f"💬 {NS_LINKS['owner']}"
-            )
-
-    async def help_command(self, update: Update,
-                           context: ContextTypes.DEFAULT_TYPE):
-        """أمر /help"""
-        user_id = update.effective_user.id
-
-        if self._is_owner(user_id):
-            help_text = (
-                "👻 أوامر Ghost:\n\n"
-                "📋 /tasks — المهام\n"
-                "📋 /add_task [عنوان] — مهمة جديدة\n"
-                "📋 /done_task [رقم] — إكمال مهمة\n\n"
-                "📅 /appointments — المواعيد\n"
-                "📅 /add_appointment [عنوان] [تاريخ] — موعد جديد\n\n"
-                "👥 /subs — الاشتراكات\n"
-                "👥 /add_sub [اسم] [خطة] — اشتراك جديد\n\n"
-                "💳 /payments — الدفعات\n"
-                "💳 /add_payment [عنوان] [مبلغ] — دفعة جديدة\n\n"
-                "🧠 /memory — الذواكر\n"
-                "🧠 /status — حالة الشبح\n"
-                "🧠 /clear — مسح المحادثة\n\n"
-                "أو بس حكيلي وأنا بفهمك! 👻"
-            )
-        else:
-            help_text = (
-                "👻 أوامر:\n\n"
-                "/start — البداية\n"
-                "/help — المساعدة\n"
-                "/subscribe — الاشتراك\n\n"
-                "للاستفسار:\n"
-                f"💬 {NS_LINKS['owner']}"
-            )
-
-        await update.message.reply_text(help_text)
-
-    async def tasks_command(self, update: Update,
-                            context: ContextTypes.DEFAULT_TYPE):
-        """أمر /tasks"""
-        if not self._is_owner(update.effective_user.id):
-            return
-
-        if self.tasks:
-            text = self.tasks.format_tasks_list(lang="lb")
-        else:
-            text = "📋 المهام مو جاهزة بعد"
-
-        await update.message.reply_text(text)
-
-    async def add_task_command(self, update: Update,
-                               context: ContextTypes.DEFAULT_TYPE):
-        """أمر /add_task"""
-        if not self._is_owner(update.effective_user.id):
-            return
-
-        title = " ".join(context.args) if context.args else ""
-        if not title:
-            await update.message.reply_text(
-                "📋 اكتب: /add_task [عنوان المهمة]"
-            )
-            return
-
-        if self.tasks:
-            task = self.tasks.add_task(title)
-            await update.message.reply_text(
-                f"✅ مهمة جديدة: {task['title']} 👻"
-            )
-        else:
-            await update.message.reply_text("📋 المهام مو جاهزة بعد")
-
-    async def done_task_command(self, update: Update,
-                                context: ContextTypes.DEFAULT_TYPE):
-        """أمر /done_task"""
-        if not self._is_owner(update.effective_user.id):
-            return
-
-        if not self.tasks:
-            return
-
-        pending = self.tasks.get_pending_tasks()
-        if not context.args:
-            await update.message.reply_text(
-                "📋 اكتب: /done_task [رقم]\n\n"
-                + self.tasks.format_tasks_list(pending, lang="lb")
-            )
-            return
-
-        try:
-            idx = int(context.args[0]) - 1
-            if 0 <= idx < len(pending):
-                task = self.tasks.complete_task(pending[idx]["id"])
-                await update.message.reply_text(
-                    f"✅ مكتملة: {task['title']} 👻"
-                )
-        except (ValueError, IndexError):
-            await update.message.reply_text("⚠️ رقم غلط")
-
-    async def appointments_command(self, update: Update,
-                                   context: ContextTypes.DEFAULT_TYPE):
-        """أمر /appointments"""
-        if not self._is_owner(update.effective_user.id):
-            return
-
-        if self.appointments:
-            text = self.appointments.format_appointments_list(
-                lang="lb"
-            )
-        else:
-            text = "📅 المواعيد مو جاهزة بعد"
-
-        await update.message.reply_text(text)
-
-    async def subs_command(self, update: Update,
-                           context: ContextTypes.DEFAULT_TYPE):
-        """أمر /subs"""
-        if not self._is_owner(update.effective_user.id):
-            return
-
-        if self.subscriptions:
-            text = self.subscriptions.format_subscriptions_list(
-                lang="lb"
-            )
-        else:
-            text = "👥 الاشتراكات مو جاهزة بعد"
-
-        await update.message.reply_text(text)
-
-    async def payments_command(self, update: Update,
-                               context: ContextTypes.DEFAULT_TYPE):
-        """أمر /payments"""
-        if not self._is_owner(update.effective_user.id):
-            return
-
-        if self.pay:
-            text = self.pay.format_payments_list(lang="lb")
-        else:
-            text = "💳 الدفعات مو جاهزة بعد"
-
-        await update.message.reply_text(text)
-
-    async def memory_command(self, update: Update,
-                             context: ContextTypes.DEFAULT_TYPE):
-        """أمر /memory"""
-        if not self._is_owner(update.effective_user.id):
-            return
-
-        if self.memory:
-            count = self.memory.get_memory_count()
-            await update.message.reply_text(
-                f"🧠 {count} ذاكرة محفوظة 👻"
-            )
-        else:
-            await update.message.reply_text("🧠 الذاكرة مو جاهزة بعد")
-
-    async def status_command(self, update: Update,
-                             context: ContextTypes.DEFAULT_TYPE):
-        """أمر /status"""
-        if not self._is_owner(update.effective_user.id):
-            return
-
-        lines = [f"👻 حالة Ghost:\n"]
-
-        if self.brain:
-            lines.append(self.brain.get_brain_status())
-        if self.tasks:
-            lines.append(self.tasks.get_tasks_summary(lang="lb"))
-        if self.appointments:
-            lines.append(
-                self.appointments.get_appointments_summary(lang="lb")
-            )
-        if self.subscriptions:
-            lines.append(
-                self.subscriptions.get_subscriptions_summary(lang="lb")
-            )
-        if self.pay:
-            lines.append(self.pay.get_pay_summary(lang="lb"))
-
-        await update.message.reply_text("\n".join(lines))
-
-    async def clear_command(self, update: Update,
-                            context: ContextTypes.DEFAULT_TYPE):
-        """أمر /clear"""
-        if not self._is_owner(update.effective_user.id):
-            return
-
-        if self.brain:
-            self.brain.clear_history()
-            await update.message.reply_text("🧹 المحادثة ممسوحة! 👻")
-
-    async def subscribe_command(self, update: Update,
-                                context: ContextTypes.DEFAULT_TYPE):
-        """أمر /subscribe — للعملاء"""
-        await update.message.reply_text(
-            "👻 اشتراك NSsFOREX:\n\n"
-            f"📱 تلغرام: {NS_LINKS['telegram']}\n"
-            f"🌐 كل الروابط: {NS_LINKS['linktree']}\n"
-            f"💬 تواصل: {NS_LINKS['owner']}\n\n"
-            "نورتنا! 🔥"
+        # --- رسالة الإيقاف ---
+        self.off_message = (
+            "👻 الشبح نايم حالياً 😴\n"
+            "رجع بعدين وقت ما يكون مستيقظ!"
         )
 
-    async def handle_message(self, update: Update,
-                             context: ContextTypes.DEFAULT_TYPE):
-        """الرد على الرسائل العادية"""
-        user = update.effective_user
-        message = update.message.text
+        logger.info("✅ GhostTelegram جاهز")
 
-        if not message:
+    # ========================================================
+    # مفتاح التشغيل والإيقاف (المالك فقط)
+    # ========================================================
+
+    async def cmd_ghost_on(self, update, context):
+        """تشغيل Ghost — المالك فقط"""
+        user_id = str(update.effective_user.id)
+        if user_id != str(OWNER_TELEGRAM_ID):
+            await update.message.reply_text(
+                "❌ مو أنت المالك! ما تقدر تشغل الشبح."
+            )
             return
 
-        sender_name = user.first_name or user.username or "مستخدم"
-        user_id = user.id
+        self.ghost_active = True
+        await update.message.reply_text(
+            "👻 Ghost شغال! ✅\n"
+            "أنا فاضي لخدمتك يا حبيبي!"
+        )
+        logger.info("✅ Ghost تم تشغيله")
 
-        if self.brain:
-            is_owner = self._is_owner(user_id)
-            response = self.brain.think(
-                message=message,
-                sender_name=sender_name if is_owner else None,
-                platform="telegram",
-                lang=None
+    async def cmd_ghost_off(self, update, context):
+        """إيقاف Ghost — المالك فقط"""
+        user_id = str(update.effective_user.id)
+        if user_id != str(OWNER_TELEGRAM_ID):
+            await update.message.reply_text(
+                "❌ مو أنت المالك! ما تقدر توقف الشبح."
+            )
+            return
+
+        self.ghost_active = False
+        await update.message.reply_text(
+            "👻 Ghost موقّف! 🔴\n"
+            "لما بدك تشغلني، ارسل /شغل"
+        )
+        logger.info("🔴 Ghost تم إيقافه")
+
+    # ========================================================
+    # أوامر تيليجرام
+    # ========================================================
+
+    async def cmd_start(self, update, context):
+        """رسالة البداية"""
+        user = update.effective_user
+        user_id = str(user.id)
+
+        if user_id == str(OWNER_TELEGRAM_ID):
+            text = (
+                f"أهلاً يا {OWNER_NAME}! 👻\n\n"
+                f"أنا {GHOST_NAME}، مساعدك الشخصي.\n\n"
+                f"🔍 أوامرك:\n"
+                f"/شغل — تشغيل الشبح ✅\n"
+                f"/وقف — إيقاف الشبح 🔴\n"
+                f"/مهام — عرض المهام\n"
+                f"/مواعيد — عرض المواعيد\n"
+                f"/اشتراكات — عرض الاشتراكات\n"
+                f"/حالة — حالة الشبح\n"
+                f"/مساعدة — قائمة الأوامر"
             )
         else:
-            if self._is_owner(user_id):
-                response = "👻 الدماغ مو جاهز بعد..."
-            else:
-                response = (
-                    f"👻 شكراً لرسالتك! للاشتراك:\n"
-                    f"📱 {NS_LINKS['telegram']}\n"
-                    f"🌐 {NS_LINKS['linktree']}"
+            text = (
+                f"أهلاً! أنا {GHOST_NAME}، المساعد الشخصي "
+                f"لـ {OWNER_NAME} 👻\n\n"
+                f"كيف فيني أساعدك؟"
+            )
+
+        await update.message.reply_text(text)
+
+    async def cmd_help(self, update, context):
+        """قائمة المساعدة"""
+        user_id = str(update.effective_user.id)
+
+        if user_id == str(OWNER_TELEGRAM_ID):
+            text = (
+                "🔍 أوامر الشبح:\n\n"
+                "/شغل — تشغيل الشبح ✅\n"
+                "/وقف — إيقاف الشبح 🔴\n"
+                "/حالة — حالة الشبح\n"
+                "/مهام — عرض المهام\n"
+                "/مواعيد — عرض المواعيد\n"
+                "/اشتراكات — عرض الاشتراكات\n"
+                "/نظام — تذكير NSsFOREX\n\n"
+                "أو ارسل أي رسالة وكلامك!"
+            )
+        else:
+            text = (
+                "كيف فيني أساعدك؟\n\n"
+                "ارسل رسالتك وبردا عليك! 👻"
+            )
+
+        await update.message.reply_text(text)
+
+    async def cmd_status(self, update, context):
+        """حالة Ghost"""
+        user_id = str(update.effective_user.id)
+        if user_id != str(OWNER_TELEGRAM_ID):
+            await update.message.reply_text("👻 Ghost شغال!")
+            return
+
+        if self.ghost_active:
+            status = "✅ شغال"
+        else:
+            status = "🔴 موقّف"
+
+        text = (
+            f"👻 حالة الشبح:\n\n"
+            f"الوضع: {status}\n"
+        )
+
+        if self.tasks and hasattr(self.tasks, "get_status"):
+            text += f"المهام: {self.tasks.get_status()}\n"
+        if self.appointments and hasattr(self.appointments, "get_status"):
+            text += f"المواعيد: {self.appointments.get_status()}\n"
+        if self.subscriptions and hasattr(self.subscriptions, "get_status"):
+            text += f"الاشتراكات: {self.subscriptions.get_status()}\n"
+
+        await update.message.reply_text(text)
+
+    async def cmd_tasks(self, update, context):
+        """عرض المهام"""
+        if not self.tasks:
+            await update.message.reply_text("❌ نظام المهام مو جاهز")
+            return
+
+        tasks = self.tasks.list_tasks()
+        if not tasks:
+            await update.message.reply_text("📝 ما عندك مهام حالياً")
+            return
+
+        text = "📝 مهامك:\n\n"
+        for i, task in enumerate(tasks, 1):
+            status = "✅" if task.get("done") else "⬜"
+            text += f"{i}. {status} {task.get('title', task)}\n"
+
+        await update.message.reply_text(text)
+
+    async def cmd_appointments(self, update, context):
+        """عرض المواعيد"""
+        if not self.appointments:
+            await update.message.reply_text("❌ نظام المواعيد مو جاهز")
+            return
+
+        appointments = self.appointments.list_appointments()
+        if not appointments:
+            await update.message.reply_text("📅 ما عندك مواعيد حالياً")
+            return
+
+        text = "📅 مواعيدك:\n\n"
+        for i, appt in enumerate(appointments, 1):
+            text += (
+                f"{i}. {appt.get('title', appt)} — "
+                f"{appt.get('date', '')}\n"
+            )
+
+        await update.message.reply_text(text)
+
+    async def cmd_subscriptions(self, update, context):
+        """عرض الاشتراكات"""
+        if not self.subscriptions:
+            await update.message.reply_text(
+                "❌ نظام الاشتراكات مو جاهز"
+            )
+            return
+
+        subs = self.subscriptions.list_subscriptions()
+        if not subs:
+            await update.message.reply_text("💳 ما عندك اشتراكات")
+            return
+
+        text = "💳 اشتراكاتك:\n\n"
+        for i, sub in enumerate(subs, 1):
+            status = "🟢" if sub.get("active") else "🔴"
+            text += (
+                f"{i}. {status} {sub.get('name', sub)} — "
+                f"{sub.get('price', '')}\n"
+            )
+
+        await update.message.reply_text(text)
+
+    async def cmd_nss(self, update, context):
+        """تذكير NSsFOREX"""
+        text = (
+            "📈 NSsFOREX — تذكير!\n\n"
+            f"تيليجرام: {NS_LINKS['telegram']}\n"
+            f"Linktree: {NS_LINKS['linktree']}\n"
+            f"نيسال: {NS_LINKS['owner']}\n\n"
+            f"🔔 تذكير الاشتراك: قبل {SUB_REMINDER_DAYS} يوم"
+        )
+        await update.message.reply_text(text)
+
+    # ========================================================
+    # الرسائل العادية
+    # ========================================================
+
+    async def handle_message(self, update, context):
+        """معالجة الرسائل"""
+        # --- فحص إذا Ghost موقّف ---
+        if not self.ghost_active:
+            user_id = str(update.effective_user.id)
+            if user_id == str(OWNER_TELEGRAM_ID):
+                await update.message.reply_text(
+                    "🔴 أنا موقّف حالياً.\n"
+                    "شغلني بـ /شغل"
                 )
+            else:
+                await update.message.reply_text(
+                    self.off_message
+                )
+            return
+
+        # --- معالجة عادية ---
+        message_text = update.message.text
+        user = update.effective_user
+        sender_name = user.first_name
+        user_id = str(user.id)
+        is_owner = user_id == str(OWNER_TELEGRAM_ID)
+
+        # حفظ بالذاكرة
+        if self.memory:
+            self.memory.save_message(
+                sender=sender_name,
+                message=message_text,
+                platform="telegram",
+                is_owner=is_owner
+            )
+
+        # توليد الرد
+        if self.brain:
+            response = self.brain.think(
+                message=message_text,
+                sender_name=sender_name,
+                platform="telegram",
+                is_owner=is_owner,
+                lang="ar"
+            )
+        else:
+            response = "👻 ما في عقل! شوف العقل."
+
+        # حفظ الرد
+        if self.memory:
+            self.memory.save_message(
+                sender=GHOST_NAME,
+                message=response,
+                platform="telegram",
+                is_ghost=True
+            )
 
         await update.message.reply_text(response)
 
-    async def send_reminder(self, chat_id, message):
-        """إرسال تذكير"""
-        try:
-            if self.bot:
-                await self.bot.send_message(
-                    chat_id=chat_id, text=message
+    # ========================================================
+    # استقبال رسالة من واتساب (جسر واتساب→تيليجرام)
+    # ========================================================
+
+    async def send_to_owner(self, text):
+        """إرسال رسالة للمالك على تيليجرام"""
+        if self.app and OWNER_TELEGRAM_ID:
+            try:
+                await self.app.bot.send_message(
+                    chat_id=OWNER_TELEGRAM_ID,
+                    text=text
                 )
-                logger.info(f"🔔 تذكير مرسل لـ {chat_id}")
-        except Exception as e:
-            logger.error(f"❌ خطأ بإرسال التذكير: {e}")
+                logger.info("📩 رسالة مرسلة للمالك على تيليجرام")
+                return True
+            except Exception as e:
+                logger.error(f"❌ خطأ إرسال تيليجرام: {e}")
+        return False
 
-    async def check_and_remind(self):
-        """فحص وإرسال التذكيرات"""
-        if not self.bot:
-            return
+    async def forward_whatsapp_to_telegram(
+        self, sender_phone, message
+    ):
+        """تحويل رسالة واتساب لتيليجرام"""
+        text = (
+            f"💬 رسالة واتساب جديدة!\n\n"
+            f"📞 من: {sender_phone}\n"
+            f"📝 الرسالة: {message}\n\n"
+            f"---\n"
+        )
 
-        reminders_sent = []
-
-        # تذكيرات المهام
-        if self.tasks:
-            task_reminders = self.tasks.get_reminders()
-            for task in task_reminders:
-                msg = f"⏰ تذكير: {task['title']}"
-                await self.send_reminder(self.owner_id, msg)
-                reminders_sent.append(("task", task["id"]))
-
-        # تذكيرات المواعيد
-        if self.appointments:
-            apt_reminders = self.appointments.get_reminders()
-            for apt in apt_reminders:
-                msg = f"📅 موعد قريب: {apt['title']}"
-                await self.send_reminder(self.owner_id, msg)
-                reminders_sent.append(("appointment", apt["id"]))
-
-        # تذكيرات الاشتراكات
-        if self.subscriptions:
-            sub_reminders = self.subscriptions.get_reminders(
-                lang="lb"
+        # يلقي الجواب من العقل
+        if self.brain and self.ghost_active:
+            response = self.brain.think(
+                message=message,
+                sender_name=sender_phone,
+                platform="whatsapp",
+                lang="ar"
             )
-            for reminder in sub_reminders:
-                client_id = reminder.get("client_id")
-                platform = reminder.get("platform", "telegram")
-                if platform == "telegram" and client_id:
-                    try:
-                        await self.send_reminder(
-                            int(client_id), reminder["message"]
-                        )
-                    except (ValueError, TypeError):
-                        pass
-                # إرسال نسخة للمالك كمان
-                await self.send_reminder(
-                    self.owner_id,
-                    f"📋 تذكير اشتراك: {reminder['subscription']['client_name']}"
-                )
-                reminders_sent.append(
-                    ("subscription", reminder["subscription"]["id"])
-                )
+            text += f"👻 رد Ghost:\n{response}"
+        else:
+            text += "🔴 Ghost موقّف حالياً"
 
-        return reminders_sent
+        await self.send_to_owner(text)
+
+    # ========================================================
+    # تشغيل البوت
+    # ========================================================
 
     def setup(self):
         """إعداد البوت"""
-        if not TELEGRAM_AVAILABLE:
-            logger.error("❌ python-telegram-bot مو مثبت")
-            return False
-
         if not self.token:
-            logger.error("❌ TELEGRAM_BOT_TOKEN فارغ")
+            logger.error("❌ TELEGRAM_BOT_TOKEN ناقص")
             return False
 
-        self.app = Application.builder().token(self.token).build()
-        self.bot = self.app.bot
+        self.app = (
+            Application.builder()
+            .token(self.token)
+            .build()
+        )
 
         # أوامر المالك
-        self.app.add_handler(CommandHandler("start", self.start))
-        self.app.add_handler(CommandHandler("help", self.help_command))
         self.app.add_handler(
-            CommandHandler("tasks", self.tasks_command)
+            CommandHandler("شغل", self.cmd_ghost_on)
         )
         self.app.add_handler(
-            CommandHandler("add_task", self.add_task_command)
-        )
-        self.app.add_handler(
-            CommandHandler("done_task", self.done_task_command)
-        )
-        self.app.add_handler(
-            CommandHandler("appointments", self.appointments_command)
-        )
-        self.app.add_handler(
-            CommandHandler("subs", self.subs_command)
-        )
-        self.app.add_handler(
-            CommandHandler("payments", self.payments_command)
-        )
-        self.app.add_handler(
-            CommandHandler("memory", self.memory_command)
-        )
-        self.app.add_handler(
-            CommandHandler("status", self.status_command)
-        )
-        self.app.add_handler(
-            CommandHandler("clear", self.clear_command)
-        )
-        self.app.add_handler(
-            CommandHandler("subscribe", self.subscribe_command)
+            CommandHandler("وقف", self.cmd_ghost_off)
         )
 
-        # الرسائل العادية
+        # أوامر عامة
+        self.app.add_handler(
+            CommandHandler("start", self.cmd_start)
+        )
+        self.app.add_handler(
+            CommandHandler("help", self.cmd_help)
+        )
+        self.app.add_handler(
+            CommandHandler("مساعدة", self.cmd_help)
+        )
+        self.app.add_handler(
+            CommandHandler("حالة", self.cmd_status)
+        )
+        self.app.add_handler(
+            CommandHandler("مهام", self.cmd_tasks)
+        )
+        self.app.add_handler(
+            CommandHandler("مواعيد", self.cmd_appointments)
+        )
+        self.app.add_handler(
+            CommandHandler("اشتراكات", self.cmd_subscriptions)
+        )
+        self.app.add_handler(
+            CommandHandler("نظام", self.cmd_nss)
+        )
+
+        # رسائل عادية
         self.app.add_handler(
             MessageHandler(
                 filters.TEXT & ~filters.COMMAND,
@@ -416,13 +395,21 @@ class GhostTelegram:
             )
         )
 
-        logger.info("✅ بوت تلغرام جاهز")
+        logger.info("✅ أوامر تيليجرام جاهزة")
         return True
 
-    def run(self):
+    async def start(self):
         """تشغيل البوت"""
         if self.setup():
-            logger.info("👻 Ghost Telegram شغال...")
-            self.app.run_polling()
+            logger.info("📱 Ghost Telegram يشتغل...")
+            await self.app.run_polling()
+
+    def get_status(self):
+        """حالة تيليجرام"""
+        if not self.token:
+            return "❌ TELEGRAM_BOT_TOKEN ناقص"
+
+        if self.ghost_active:
+            return "✅ تيليجرام شغال"
         else:
-            logger.error("❌ ما نقدر نشغّل البوت")
+            return "🔴 تيليجرام موقّف (الشبح نايم)"
