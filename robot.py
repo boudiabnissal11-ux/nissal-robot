@@ -1,42 +1,23 @@
-# robot.py - جسم Ghost - مربوط بالعقل المحمي
+import arabic_reshaper
+from bidi.algorithm import get_display
 from ghost_brain import GhostBrain
 
-print("👻 مرحبا! Ghost اشتغل")
-name = input("شو اسمك حبيب؟ ")
+def ar(text):
+    reshaped = arabic_reshaper.reshape(text)
+    return get_display(reshaped)
 
-# هون منحدد اذا انت المالك ولا لا
-is_owner = False
-if "نصال" in name or "nissal" in name.lower() or "nصال" in name:
-    is_owner = True
-    print(f"👑 اهلا وسهلا بالمعلم {name}! كل الصلاحيات مفتوحة الك!")
-else:
-    print(f"اهلا وسهلا يا {name}! فيك تحكي معي بس الذاكرة بس للمعلم نصال 👑")
+print(ar("أهلا يا نصال! أنا Ghost جاهز 👻"))
+print(ar("اكتب باي للخروج"))
 
+name = "نصال"
 brain = GhostBrain()
 
 while True:
-    command = input(f"({name}) > ")
-
-    if not command.strip():
-        continue
-
-    if command == "رقص" or command == "dance":
-        print("💃 Booo! Ghost عم يرقص! 👻")
-
-    elif command == "نكتة" or command == "joke":
-        print("😂 مرة واحد راح عند الحلاق، قالو قلّلي، قالو ما بتعرف تحكي من قبل؟")
-
-    elif command == "باي" or command == "bye":
-        print(f"باي باي {name}! 😴👻")
+    cmd = input(f"({name}) > ")
+    if cmd == "باي" or cmd == "bye":
+        print(ar("باي يا نصال بشوفك بعدين 👋"))
         break
-
-    else:
-        answer = brain.respond(command, is_owner=is_owner)
-        if answer:
-            print(answer)
-        else:
-            # دردشة عادية
-            if is_owner:
-                print(f"👻 فهمت يا معلم {name} - {command}")
-            else:
-                print(f"👻 اهلا يا {name} - انا Ghost، سكرتير المعلم نصال!")
+    
+    # بياخد الجواب من المخ وبيظبطو عربي
+    answer = brain.response(cmd, is_owner=True)
+    print(ar(f"Ghost: {answer}"))
