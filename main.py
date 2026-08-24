@@ -120,14 +120,22 @@ class Ghost:
 
         # أوامر المالك
         app.add_handler(CommandHandler("start", self.telegram.handle_start))
-        app.add_handler(CommandHandler("شغل", self.telegram.handle_activate))
-        app.add_handler(CommandHandler("وقف", self.telegram.handle_deactivate))
+        app.add_handler(CommandHandler("on", self.telegram.handle_activate))
+        app.add_handler(CommandHandler("off", self.telegram.handle_deactivate))
 
-        # الرسائل
+        # الرسائل النصية
         app.add_handler(
             MessageHandler(
                 filters.TEXT & ~filters.COMMAND,
                 self.telegram.handle_message
+            )
+        )
+
+        # الفويس نوت — يسمع ويرد بصوت!
+        app.add_handler(
+            MessageHandler(
+                filters.VOICE | filters.AUDIO,
+                self.telegram.handle_voice
             )
         )
 

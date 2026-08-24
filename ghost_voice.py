@@ -42,10 +42,11 @@ class GhostVoice:
     async def _gtts_speak(self, text, lang):
         """تحويل النص لصوت باستخدام gTTS"""
         try:
+            import time
             from gtts import gTTS
             gtts_lang = self.GTTS_LANG_MAP.get(lang, "ar")
             tts = gTTS(text=text, lang=gtts_lang)
-            filename = f"{self.voice_dir}/voice_{int(os.times().elapsed * 1000) if hasattr(os, 'times') else id(text)}.mp3"
+            filename = f"{self.voice_dir}/voice_{int(time.time() * 1000)}.mp3"
             tts.save(filename)
             return filename
         except ImportError:
@@ -55,6 +56,7 @@ class GhostVoice:
 
     async def _elevenlabs_tts(self, text, lang):
         """تحويل النص لصوت باستخدام ElevenLabs API"""
+        import time
         import httpx
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{self.elevenlabs_voice}"
         headers = {
@@ -72,7 +74,7 @@ class GhostVoice:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(url, headers=headers, json=payload)
         if response.status_code == 200:
-            filename = f"{self.voice_dir}/voice_el_{len(text)}.mp3"
+            filename = f"{self.voice_dir}/voice_el_{int(time.time() * 1000)}.mp3"
             with open(filename, "wb") as f:
                 f.write(response.content)
             return filename

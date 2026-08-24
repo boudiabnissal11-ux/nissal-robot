@@ -2,3 +2,7 @@ python-telegram-bot>=21.0
 httpx>=0.27
 python-dotenv>=1.0
 gTTS>=2.3
+pydub>=0.25
+faster-whisper>=1.0
+arabic_reshaper>=3.0
+python-bidi>=0.6
