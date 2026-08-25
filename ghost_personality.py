@@ -10,7 +10,7 @@ from config import GHOST_PERSONALITY, DEFAULT_LANGUAGE, OWNER_NAME
 class GhostPersonality:
     """شخصية Ghost — بيحكي بأسلوب نصال"""
 
-    # علامات لبنانية (عمية)
+    # علامات لبنانية (عمية) — بالحروف العربية
     LEBANESE_MARKERS = [
         "شو", "ليش", "هيك", "هاد", "هادي", "هول", "هولة",
         "عمية", "يا عمي", "والعافية", "خلص", "طيب", "أوكي",
@@ -19,6 +19,20 @@ class GhostPersonality:
         "كيفك", "شو الأخبار", "ممتاز", "تمام", "يا ريت",
         "هلّق", "بعدنا", "عنا", "إلنا", "علينا", "محلى",
         "يا عيني", "وشو", "إمتى", "هون", "هونيك",
+    ]
+
+    # علامات لبنانية مكتوبة Arabizi (حروف لاتينية)
+    LEBANESE_ARABIZI_MARKERS = [
+        "kifak", "kifik", "kifkon", "shu", "shou", "chou",
+        "habibi", "habibe", "hbibi", "mnih", "mni7", "mnee7",
+        "tamam", "tmam", "khalas", "khallas", "khalass",
+        "yalla", "yaala", "yala", "3am", "3ala", "2al", "2alo",
+        "3endak", "3andak", "wein", "win", "leish", "laish", "kifak",
+        "bade", "badde", "baddi", "bde", "keefak", "keefik",
+        "sar", "ma3ak", "ma3ik", "hala", "ahla", "marhaba",
+        "shu fi", "chou fi", "3anjad", "akid", "aktar", "kteer",
+        "ktir", "maneh", "za3lan", "mabsout", "mabsoot", "yislamo",
+        "tfaddal", "tfaddol", "eh", "la2", "laa2", "shakle",
     ]
 
     # علامات فصحى
@@ -43,30 +57,56 @@ class GhostPersonality:
         self.default_lang = DEFAULT_LANGUAGE
         self.learned_style = {}
 
+    def _count_markers(self, text_lower, markers):
+        """عدّ العلامات بكلمة كاملة (word boundary) مش substring"""
+        count = 0
+        for m in markers:
+            pattern = r'(?<![a-zA-Z0-9\u0600-\u06FF])' + \
+                      re.escape(m.lower()) + \
+                      r'(?![a-zA-Z0-9\u0600-\u06FF])'
+            if re.search(pattern, text_lower):
+                count += 1
+        return count
+
     def detect_language(self, text):
         """كشف لغة النص تلقائياً"""
         text_lower = text.lower()
 
-        # عدّ العلامات لكل لغة
-        lb_score = sum(1 for m in self.LEBANESE_MARKERS
-                       if m in text_lower)
-        ar_score = sum(1 for m in self.FUSHA_MARKERS
-                       if m in text_lower)
-        en_score = sum(1 for m in self.ENGLISH_MARKERS
-                       if m in text_lower)
-
-        # تحقق من الحروف الإنجليزية
-        if re.search(r'[a-zA-Z]{3,}', text):
-            en_score += 2
-
-        # لو نصال حكى — لبناني
+        # لو نصال حكى — إشارة قوية للبناني
+        owner_bonus = 0
         if OWNER_NAME in text or "@NISSALBOUDIAB" in text.upper():
-            lb_score += 5
+            owner_bonus = 5
 
+        # هل فيه حروف عربية بالنص؟
+        has_arabic_script = bool(re.search(r'[\u0600-\u06FF]', text))
+
+        # هل فيه حروف لاتينية متتالية (3+)؟
+        has_latin = bool(re.search(r'[a-zA-Z]{3,}', text))
+
+        lb_score = self._count_markers(text_lower, self.LEBANESE_MARKERS) + owner_bonus
+        ar_score = self._count_markers(text_lower, self.FUSHA_MARKERS)
+        en_score = self._count_markers(text_lower, self.ENGLISH_MARKERS)
+        lb_arabizi_score = self._count_markers(text_lower, self.LEBANESE_ARABIZI_MARKERS)
+
+        # الحالة 1: نص مكتوب بحروف عربية
+        if has_arabic_script:
+            if lb_score == 0 and ar_score == 0:
+                return "lb"  # افتراضي لبناني لو مفيش علامات واضحة
+            return "lb" if lb_score >= ar_score else "ar"
+
+        # الحالة 2: نص مكتوب بحروف لاتينية فقط (Arabizi أو إنجليزي)
+        if has_latin:
+            if lb_arabizi_score > 0 and lb_arabizi_score >= en_score:
+                return "lb"
+            if en_score > 0:
+                return "en"
+            if owner_bonus > 0:
+                return "lb"
+
+        # الحالة 3: ما قدرنا نحسم — رجّح حسب أعلى نقاط
         scores = {"lb": lb_score, "ar": ar_score, "en": en_score}
         detected = max(scores, key=scores.get)
 
-        # لو كلهم صفر — الافتراضي
         if scores[detected] == 0:
             return self.default_lang
 
@@ -83,10 +123,22 @@ class GhostPersonality:
         # إضافات حسب اللغة
         if lang == "lb":
             lang_instruction = (
-                "\n\nمهم: رد بلبناني عمية. "
-                "استخدم كلمات مثل: حبيبي، يا عمي، خلص، طيب، "
-                "هيك، هاد، شو، ليش. "
-                "أسلوبك أخوي ومباشر مثل نصال."
+                "\n\nمهم جداً: رد فقط باللهجة اللبنانية المحكية (العامية)، "
+                "وممنوع تستخدم أي كلمة أو تركيب فصيح متل: (ماذا، لماذا، "
+                "أين، الذي، إنّ، لن، لم). "
+                "استخدم قواعد اللبناني: "
+                "'شو' بدل ماذا، 'ليش' بدل لماذا، 'وين' بدل أين، "
+                "'هيدا/هيدي' أو 'هاد/هاي' بدل هذا/هذه، "
+                "'ما بعرف' بدل لا أعرف، 'رح' بدل سوف، "
+                "'عم ب' للمضارع المستمر (متل: عم بحكي، عم بشتغل)، "
+                "'مش' بدل ليس، 'كتير' بدل جداً/كثيراً. "
+                "أمثلة على أسلوبك: "
+                "'أهلين حبيبي، شو الأخبار؟' / "
+                "'تمام يا نصال، خلص ضبطتلك الموضوع' / "
+                "'ما تهتم، أنا هون وعم بتابعلك كل شي' / "
+                "'يا ريت تعطيني كم تفصيل زيادة كرمال أفهم أكتر'. "
+                "خلي جوابك طبيعي متل ما نصال نفسه بيحكي مع صاحبو، "
+                "مش متل كتاب أو ترجمة."
             )
         elif lang == "ar":
             lang_instruction = (
