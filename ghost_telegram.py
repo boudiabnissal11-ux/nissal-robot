@@ -86,7 +86,7 @@ class GhostTelegram:
         message = update.effective_message
 
         text = message.text if message and message.text else ""
-
+        logger.info(f"📩 وصلت رسالة إلى Ghost: {text}")
         if not text:
             return
 
