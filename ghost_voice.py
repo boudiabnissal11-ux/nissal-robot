@@ -1,53 +1,42 @@
 # ============================================================
 # Ghost Voice — صوت الشبح
-# ElevenLabs أولاً — بدون gTTS أثناء الاختبار
+# تحويل النص لصوت باستخدام Edge TTS
 # ============================================================
+
 import os
 import re
 import time
-from config import (
-    DEFAULT_LANGUAGE,
-    ELEVENLABS_API_KEY,
-    ELEVENLABS_VOICE_ID,
-)
 
-# قاموس تصحيح نطق الكلمات اللبنانية/العامية
-# ضيف أي كلمة بتلاحظ إنها بتتنطق غلط، وحط تشكيل يظبطها
-PRONUNCIATION_FIXES = {
-    "هيدا": "هَيدا",
-    "هيدي": "هَيدي",
-    "هول": "هَول",
-    "هولة": "هَولة",
-    "شو": "شُو",
-    "بدي": "بِدّي",
-    "بدك": "بِدَّك",
-    "كتير": "كْتير",
-    "ktir": "كْتير",
-    "شلون": "شْلون",
-    "هيك": "هيك",
-    "هلّق": "هَلَّق",
-    "منيح": "مْنيح",
-}
+from config import DEFAULT_LANGUAGE, ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID
 
 
 class GhostVoice:
-    """صوت Ghost — ElevenLabs"""
+    """صوت Ghost — تحويل الرد النصي إلى صوت"""
+
+    # الأصوات المستخدمة في Edge TTS
+    # العربية: صوت لبناني رجولي
+    EDGE_VOICE_MAP = {
+        "ar": "ar-LB-RamiNeural",
+        "lb": "ar-LB-RamiNeural",
+        "en": "en-US-GuyNeural",
+        "fr": "fr-FR-HenriNeural",
+    }
 
     def __init__(self):
         self.default_lang = DEFAULT_LANGUAGE
         self.elevenlabs_key = ELEVENLABS_API_KEY
         self.elevenlabs_voice = ELEVENLABS_VOICE_ID
+
         self.voice_dir = "data/voice"
         os.makedirs(self.voice_dir, exist_ok=True)
 
     def _clean_text(self, text):
-        """تنظيف النص من الإيموجي والرموز قبل إرساله للـ TTS"""
+        """تنظيف النص من الإيموجي قبل إرساله للـ TTS"""
         emoji_pattern = re.compile(
             "["
             "\U0001F300-\U0001FAFF"
             "\U00002600-\U000027BF"
             "\U0001F1E6-\U0001F1FF"
-            "\U00002700-\U000027BF"
             "]+",
             flags=re.UNICODE,
         )
@@ -56,50 +45,86 @@ class GhostVoice:
         text = re.sub(r"\s+", " ", text).strip()
         return text
 
-    def _fix_pronunciation(self, text):
-        """تصحيح نطق كلمات لبنانية معروفة إنها بتتلخبط"""
-        for wrong, fixed in PRONUNCIATION_FIXES.items():
-            pattern = r'(?<![\u0600-\u06FFa-zA-Z0-9])' + \
-                      re.escape(wrong) + \
-                      r'(?![\u0600-\u06FFa-zA-Z0-9])'
-            text = re.sub(pattern, fixed, text)
-        return text
-
     async def speak(self, text, lang=None):
-        """تحويل النص لصوت باستخدام ElevenLabs"""
+        """تحويل النص لصوت — Edge TTS أولاً، ثم ElevenLabs"""
+
         if lang is None:
             lang = self.default_lang
 
+        # توحيد اللغة العربية
+        if lang in ("arabic", "Arabic"):
+            lang = "ar"
+
+        if lang in ("lebanese", "Lebanese"):
+            lang = "lb"
+
         text = self._clean_text(text)
-        text = self._fix_pronunciation(text)
 
-        print(f"🔊 Ghost Voice: lang={lang}")
-        print(f"🎙️ ElevenLabs Voice ID: {'SET' if self.elevenlabs_voice else 'EMPTY'}")
-        print(f"📝 النص (بعد التنظيف): {text}")
-
-        if not self.elevenlabs_key:
-            raise Exception("ELEVENLABS_API_KEY غير موجود")
-        if not self.elevenlabs_voice:
-            raise Exception("ELEVENLABS_VOICE_ID غير موجود")
-        if not text:
-            raise Exception("النص فارغ بعد التنظيف")
-
+        # ----------------------------------------------------
+        # Edge TTS — الخيار الأساسي
+        # ----------------------------------------------------
         try:
-            filename = await self._elevenlabs_tts(text, lang)
-            print(f"✅ ElevenLabs نجح: {filename}")
-            return filename
+            return await self._edge_tts_speak(text, lang)
+
         except Exception as e:
-            print(f"❌ ElevenLabs فشل: {e}")
-            raise
+            print(f"⚠️ Edge TTS failed: {e}")
+
+        # ----------------------------------------------------
+        # ElevenLabs — احتياط
+        # ----------------------------------------------------
+        if self.elevenlabs_key and self.elevenlabs_voice:
+            try:
+                return await self._elevenlabs_tts(text, lang)
+
+            except Exception as e:
+                print(f"⚠️ ElevenLabs failed: {e}")
+
+        return "⚠️ ما قدرت أحوّل الرد لصوت"
+
+    async def _edge_tts_speak(self, text, lang):
+        """تحويل النص لصوت باستخدام Edge TTS"""
+
+        import edge_tts
+
+        # إذا اللغة غير موجودة، استخدم العربي اللبناني
+        voice = self.EDGE_VOICE_MAP.get(
+            lang,
+            self.EDGE_VOICE_MAP["ar"]
+        )
+
+        filename = os.path.join(
+            self.voice_dir,
+            f"voice_{int(time.time() * 1000)}.mp3"
+        )
+
+        print(f"🔊 Edge TTS: {voice}")
+
+        communicate = edge_tts.Communicate(
+            text=text,
+            voice=voice,
+            rate="+25%",
+        )
+
+        await communicate.save(filename)
+
+        if not os.path.exists(filename):
+            raise Exception("Edge TTS لم ينشئ ملف الصوت")
+
+        if os.path.getsize(filename) == 0:
+            raise Exception("ملف الصوت فارغ")
+
+        return filename
 
     async def _elevenlabs_tts(self, text, lang):
         """تحويل النص لصوت باستخدام ElevenLabs API"""
+
         import httpx
 
         url = (
-            "https://api.elevenlabs.io/v1/text-to-speech/"
+            f"https://api.elevenlabs.io/v1/text-to-speech/"
             f"{self.elevenlabs_voice}"
         )
+
         headers = {
             "xi-api-key": self.elevenlabs_key,
             "Content-Type": "application/json",
@@ -111,51 +136,36 @@ class GhostVoice:
             "voice_settings": {
                 "stability": 0.7,
                 "similarity_boost": 0.8,
-                "style": 0.3,
-                "use_speaker_boost": True,
                 "speed": 1.15,
             },
         }
 
-        print("🌐 جاري الاتصال بـ ElevenLabs...")
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 url,
                 headers=headers,
                 json=payload,
             )
 
-        if response.status_code != 200:
-            try:
-                error_text = response.text
-            except Exception:
-                error_text = "Unknown error"
-            raise Exception(
-                f"HTTP {response.status_code}: {error_text}"
+        if response.status_code == 200:
+
+            filename = os.path.join(
+                self.voice_dir,
+                f"voice_el_{int(time.time() * 1000)}.mp3"
             )
 
-        if not response.content:
-            raise Exception("ElevenLabs أعاد ملفًا فارغًا")
+            with open(filename, "wb") as f:
+                f.write(response.content)
 
-        filename = os.path.join(
-            self.voice_dir,
-            f"voice_el_{int(time.time() * 1000)}.mp3"
+            return filename
+
+        raise Exception(
+            f"ElevenLabs error: {response.status_code}"
         )
-        with open(filename, "wb") as f:
-            f.write(response.content)
-
-        if not os.path.exists(filename):
-            raise Exception("لم يتم إنشاء ملف الصوت")
-        if os.path.getsize(filename) == 0:
-            raise Exception("ملف الصوت فارغ")
-
-        return filename
 
     def get_status(self):
         """حالة الصوت"""
-        has_key = "✅" if self.elevenlabs_key else "❌"
-        has_voice = "✅" if self.elevenlabs_voice else "❌"
-        return (
-            f"ElevenLabs API: {has_key} | "
-            f"Voice ID: {has_voice}"
-        )
+
+        has_eleven = "✅" if self.elevenlabs_key else "❌"
+
+        return f"{has_eleven} ElevenLabs | Edge TTS: متاح"
