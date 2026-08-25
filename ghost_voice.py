@@ -42,7 +42,6 @@ class GhostVoice:
 
     def _clean_text(self, text):
         """تنظيف النص من الإيموجي والرموز قبل إرساله للـ TTS"""
-        # إزالة الإيموجي (نطاقات اليونيكود الشائعة للإيموجي)
         emoji_pattern = re.compile(
             "["
             "\U0001F300-\U0001FAFF"
@@ -53,9 +52,7 @@ class GhostVoice:
             flags=re.UNICODE,
         )
         text = emoji_pattern.sub("", text)
-        # إزالة أي رموز Markdown ممكن تتسرب (*، #، _)
         text = re.sub(r"[*_#`]", "", text)
-        # تنظيف الفراغات الزائدة الناتجة
         text = re.sub(r"\s+", " ", text).strip()
         return text
 
@@ -73,7 +70,6 @@ class GhostVoice:
         if lang is None:
             lang = self.default_lang
 
-        # تنظيف النص وتصحيح النطق قبل الإرسال
         text = self._clean_text(text)
         text = self._fix_pronunciation(text)
 
@@ -109,14 +105,6 @@ class GhostVoice:
             "Content-Type": "application/json",
         }
 
-        # ربط لغة Ghost الداخلية بكود اللغة اللي ElevenLabs بتفهمه
-        language_code_map = {
-            "lb": "ar",
-            "ar": "ar",
-            "en": "en",
-        }
-        language_code = language_code_map.get(lang, "ar")
-
         payload = {
             "text": text,
             "model_id": "eleven_multilingual_v2",
@@ -125,12 +113,9 @@ class GhostVoice:
                 "similarity_boost": 0.8,
                 "style": 0.3,
                 "use_speaker_boost": True,
+                "speed": 1.15,
             },
         }
-
-        # ملاحظة: language_code مدعوم رسمياً مع eleven_turbo_v2_5
-        # لو بدك تفعّله، غيّر model_id تحت وفعّل السطر التالي:
-        # payload["language_code"] = language_code
 
         print("🌐 جاري الاتصال بـ ElevenLabs...")
         async with httpx.AsyncClient(timeout=60.0) as client:
