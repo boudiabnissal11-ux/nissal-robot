@@ -294,18 +294,18 @@ class GhostTelegram:
 
                 model = self._get_whisper_model()
 
-                segments, info = model.transcribe(
-                    wav_path,
-                    language="ar",
-                    beam_size=5,
-                    best_of=5,
-                    temperature=0,
-                    vad_filter=True,
-                    vad_parameters={
-                        "min_silence_duration_ms": 500
-                    },
-                    condition_on_previous_text=False
-                )
+               segments, info = model.transcribe(
+    wav_path,
+    language="ar",
+    beam_size=1,
+    best_of=1,
+    temperature=0,
+    vad_filter=True,
+    vad_parameters={
+        "min_silence_duration_ms": 500
+    },
+    condition_on_previous_text=False
+)
 
                 transcribed_text = " ".join(
                     seg.text.strip()
