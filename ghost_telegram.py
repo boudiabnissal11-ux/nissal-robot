@@ -133,9 +133,23 @@ class GhostTelegram:
         # 4. حوّل الصوت لنص (Speech-to-Text)
         try:
             from faster_whisper import WhisperModel
-            model = WhisperModel("tiny", device="cpu", compute_type="int8")
-            segments, info = model.transcribe(wav_path, language="ar")
-            transcribed_text = " ".join([seg.text for seg in segments]).strip()
+
+model = WhisperModel(
+    "small",
+    device="cpu",
+    compute_type="int8"
+)
+
+segments, info = model.transcribe(
+    wav_path,
+    language="ar",
+    beam_size=5,
+    vad_filter=True
+)
+
+transcribed_text = " ".join(
+    seg.text.strip() for seg in segments
+).strip()
             logger.info(f"📝 النص من الصوت: {transcribed_text}")
         except Exception as e:
             logger.error(f"خطأ بتحويل الصوت لنص: {e}")
