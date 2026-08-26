@@ -11,6 +11,7 @@ from ghost_memory import GhostMemory
 from ghost_personality import GhostPersonality
 from ghost_brain import GhostBrain
 from ghost_voice import GhostVoice
+from ghost_core import GhostCore
 from ghost_tasks import GhostTasks
 from ghost_appointments import GhostAppointments
 from ghost_subscriptions import GhostSubscriptions
@@ -46,6 +47,13 @@ class Ghost:
         # === الصوت ===
         self.voice = GhostVoice()
 
+        # === غوست كور — نقطة القرار المركزية الجديدة ===
+        self.core = GhostCore(
+            brain=self.brain,
+            personality=self.personality,
+            voice=self.voice
+        )
+
         # === المهام ===
         self.tasks = GhostTasks(
             memory=self.memory,
@@ -70,8 +78,9 @@ class Ghost:
             brain=self.brain
         )
 
-        # === تيليجرام ===
+        # === تيليجرام — الآن بيمرّر core كمان ===
         self.telegram = GhostTelegram(
+            core=self.core,
             memory=self.memory,
             brain=self.brain,
             personality=self.personality,
@@ -110,7 +119,6 @@ class Ghost:
             logger.error("❌ TELEGRAM_BOT_TOKEN مو موجود!")
             return
 
-        # بناء التطبيق
         app = (
             ApplicationBuilder()
             .token(TELEGRAM_BOT_TOKEN)
@@ -118,12 +126,10 @@ class Ghost:
             .build()
         )
 
-        # أوامر المالك
         app.add_handler(CommandHandler("start", self.telegram.handle_start))
         app.add_handler(CommandHandler("on", self.telegram.handle_activate))
         app.add_handler(CommandHandler("off", self.telegram.handle_deactivate))
 
-        # الرسائل النصية
         app.add_handler(
             MessageHandler(
                 filters.TEXT & ~filters.COMMAND,
@@ -131,7 +137,6 @@ class Ghost:
             )
         )
 
-        # الفويس نوت — يسمع ويرد بصوت!
         app.add_handler(
             MessageHandler(
                 filters.VOICE | filters.AUDIO,
