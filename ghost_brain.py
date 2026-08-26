@@ -23,7 +23,11 @@ class GhostBrain:
         self.base_url = LLM_BASE_URL
         self.temperature = LLM_TEMPERATURE
         self.max_tokens = LLM_MAX_TOKENS
-        self.conversation_history = []
+
+        # سجلّان منفصلان — كل لغة إلها سجلها الخاص
+        # هيك ما بينلخبط أسلوب الفصحى مع اللبناني
+        self.conversation_history_ar = []
+        self.conversation_history_lb = []
 
     def set_memory(self, memory):
         """تعيين الذاكرة"""
@@ -32,6 +36,12 @@ class GhostBrain:
     def set_personality(self, personality):
         """تعيين الشخصية"""
         self.personality = personality
+
+    def _get_history(self, lang):
+        """اختيار السجل الصحيح حسب اللغة"""
+        if lang == "lb":
+            return self.conversation_history_lb
+        return self.conversation_history_ar
 
     def _build_messages(self, user_message, system_prompt=None,
                         context=None, lang=None):
@@ -56,8 +66,9 @@ class GhostBrain:
                 "content": f"سياق من الذاكرة:\n{context}"
             })
 
-        # سجل المحادثة (آخر 10 رسائل)
-        recent = self.conversation_history[-10:]
+        # سجل المحادثة — فقط من نفس اللغة (آخر 6 رسائل، أخف وأسرع)
+        history = self._get_history(lang)
+        recent = history[-6:]
         for msg in recent:
             messages.append(msg)
 
@@ -86,7 +97,7 @@ class GhostBrain:
         if not self.api_key:
             return "⚠️ ما في مفتاح API — لسّا ما بعرف أحكي!"
 
-        # كشف اللغة
+        # كشف اللغة فقط لو ما انبعتلناش من غوست كور
         if lang is None and self.personality:
             lang = self.personality.detect_language(user_message)
 
@@ -102,7 +113,6 @@ class GhostBrain:
         )
 
         try:
-            # استدعاء LLM
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json"
@@ -125,19 +135,13 @@ class GhostBrain:
                 data = response.json()
                 reply = data["choices"][0]["message"]["content"]
 
-                # حفظ بالمحادثة
-                self.conversation_history.append({
-                    "role": "user",
-                    "content": user_message
-                })
-                self.conversation_history.append({
-                    "role": "assistant",
-                    "content": reply
-                })
+                # حفظ بالسجل الصحيح حسب اللغة
+                history = self._get_history(lang)
+                history.append({"role": "user", "content": user_message})
+                history.append({"role": "assistant", "content": reply})
 
-                # حدّ المحادثة
-                if len(self.conversation_history) > 50:
-                    self.conversation_history = self.conversation_history[-50:]
+                if len(history) > 30:
+                    history[:] = history[-30:]
 
                 return reply
             else:
@@ -153,7 +157,6 @@ class GhostBrain:
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                # لو event loop شغال — أنشئ واحد جديد
                 import concurrent.futures
                 with concurrent.futures.ThreadPoolExecutor() as pool:
                     future = pool.submit(
@@ -181,14 +184,16 @@ class GhostBrain:
 
     def clear_history(self):
         """مسح سجل المحادثة"""
-        self.conversation_history = []
+        self.conversation_history_ar = []
+        self.conversation_history_lb = []
         return "✅ مسحت سجل المحادثة"
 
     def get_status(self):
         """حالة العقل"""
         has_key = "✅" if self.api_key else "❌"
+        total = len(self.conversation_history_ar) + len(self.conversation_history_lb)
         return (
             f"{has_key} API Key | "
             f"Model: {self.model} | "
-            f"Messages: {len(self.conversation_history)}"
+            f"Messages: {total}"
         )
