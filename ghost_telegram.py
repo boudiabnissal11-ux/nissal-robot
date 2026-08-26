@@ -1,4 +1,3 @@
-```python
 # ============================================================
 # Ghost Telegram — تيليجرام الشبح
 # البوت اللي بيتواصل مع الناس
@@ -24,6 +23,7 @@ class GhostTelegram:
 
     def __init__(
         self,
+        core=None,
         memory=None,
         brain=None,
         personality=None,
@@ -33,6 +33,7 @@ class GhostTelegram:
         subscriptions=None,
         pay=None
     ):
+        self.core = core
         self.memory = memory
         self.brain = brain
         self.personality = personality
@@ -80,7 +81,7 @@ class GhostTelegram:
         update: Update,
         context: ContextTypes.DEFAULT_TYPE
     ):
-        """معالجة الرسائل النصية الواردة"""
+        """معالجة الرسائل النصية الواردة — عبر غوست كور"""
 
         user = update.effective_user
         message = update.effective_message
@@ -90,92 +91,24 @@ class GhostTelegram:
         if not text:
             return
 
-        # ----------------------------------------------------
-        # التحقق من المالك
-        # ----------------------------------------------------
-
         is_owner = str(user.id) == str(OWNER_TELEGRAM_ID)
+        sender_name = OWNER_NAME if is_owner else (user.first_name or "")
 
-        # ----------------------------------------------------
-        # كشف اللغة
-        # ----------------------------------------------------
+        if not self.core:
+            await message.reply_text("⚠️ العقل المركزي غير متصل!")
+            return
 
-        lang = (
-            self.personality.detect_language(text)
-            if self.personality
-            else "lb"
+        reply_text, _ = await self.core.handle_incoming(
+            platform="telegram",
+            platform_user_id=str(user.id),
+            sender_name=sender_name,
+            text=text,
+            response_type="text",
+            is_owner=is_owner,
         )
 
-        sender_name = user.first_name or ""
-
-        # ----------------------------------------------------
-        # حفظ الرسالة
-        # ----------------------------------------------------
-
-        if self.memory:
-            self.memory.save_message(
-                sender=sender_name,
-                message=text,
-                platform="telegram",
-                is_owner=is_owner
-            )
-
-        # ----------------------------------------------------
-        # المالك
-        # ----------------------------------------------------
-
-        if is_owner:
-
-            if self.personality:
-                self.personality.learn_style(
-                    text,
-                    source="owner"
-                )
-
-            if self.brain:
-                reply = await self.brain.think(
-                    user_message=text,
-                    lang=lang,
-                    sender_name=OWNER_NAME,
-                    platform="telegram"
-                )
-            else:
-                reply = "⚠️ العقل مو شغال!"
-
-        # ----------------------------------------------------
-        # شخص آخر
-        # ----------------------------------------------------
-
-        else:
-
-            if self.brain:
-                reply = await self.brain.think(
-                    user_message=text,
-                    lang=lang,
-                    sender_name=sender_name,
-                    platform="telegram"
-                )
-            else:
-                reply = "⚠️ Ghost مو شغال حالياً"
-
-        # ----------------------------------------------------
-        # إرسال الرد
-        # ----------------------------------------------------
-
         if message:
-            await message.reply_text(reply)
-
-        # ----------------------------------------------------
-        # حفظ رد Ghost
-        # ----------------------------------------------------
-
-        if self.memory:
-            self.memory.save_message(
-                sender="Ghost",
-                message=reply,
-                platform="telegram",
-                is_ghost=True
-            )
+            await message.reply_text(reply_text)
 
     # ========================================================
     # معالجة الفويس نوت
@@ -186,7 +119,7 @@ class GhostTelegram:
         update: Update,
         context: ContextTypes.DEFAULT_TYPE
     ):
-        """معالجة رسائل الصوت — يسمع ويرد بصوت"""
+        """معالجة رسائل الصوت — يسمع ويرد بصوت — عبر غوست كور"""
 
         user = update.effective_user
         message = update.effective_message
@@ -195,6 +128,7 @@ class GhostTelegram:
             return
 
         is_owner = str(user.id) == str(OWNER_TELEGRAM_ID)
+        sender_name = OWNER_NAME if is_owner else (user.first_name or "")
 
         # ====================================================
         # 1. تحديد الملف الصوتي
@@ -225,14 +159,9 @@ class GhostTelegram:
 
             voice_file = await voice.get_file()
 
-            ogg_path = os.path.join(
-                tmp_dir,
-                "voice.ogg"
-            )
+            ogg_path = os.path.join(tmp_dir, "voice.ogg")
 
-            await voice_file.download_to_drive(
-                ogg_path
-            )
+            await voice_file.download_to_drive(ogg_path)
 
             logger.info("✅ تم تحميل الصوت")
 
@@ -244,42 +173,23 @@ class GhostTelegram:
 
                 from pydub import AudioSegment
 
-                wav_path = os.path.join(
-                    tmp_dir,
-                    "voice.wav"
-                )
+                wav_path = os.path.join(tmp_dir, "voice.wav")
 
-                audio = AudioSegment.from_file(
-                    ogg_path
-                )
-
-                # Whisper أفضل مع Mono / 16kHz
+                audio = AudioSegment.from_file(ogg_path)
                 audio = audio.set_channels(1)
                 audio = audio.set_frame_rate(16000)
 
                 audio.export(
                     wav_path,
                     format="wav",
-                    parameters=[
-                        "-ac", "1",
-                        "-ar", "16000"
-                    ]
+                    parameters=["-ac", "1", "-ar", "16000"]
                 )
 
-                logger.info(
-                    "✅ تم تحويل الصوت إلى WAV 16kHz Mono"
-                )
+                logger.info("✅ تم تحويل الصوت إلى WAV 16kHz Mono")
 
             except Exception as e:
-
-                logger.error(
-                    f"خطأ بتحويل الصوت: {e}"
-                )
-
-                await message.reply_text(
-                    "⚠️ ما قدرت أقرأ الصوت!"
-                )
-
+                logger.error(f"خطأ بتحويل الصوت: {e}")
+                await message.reply_text("⚠️ ما قدرت أقرأ الصوت!")
                 return
 
             # =================================================
@@ -288,50 +198,33 @@ class GhostTelegram:
 
             try:
 
-                logger.info(
-                    "🧠 Ghost عم يحاول يفهم الصوت..."
-                )
+                logger.info("🧠 Ghost عم يحاول يفهم الصوت...")
 
                 model = self._get_whisper_model()
 
-               segments, info = model.transcribe(
-    wav_path,
-    language="ar",
-    beam_size=1,
-    best_of=1,
-    temperature=0,
-    vad_filter=True,
-    vad_parameters={
-        "min_silence_duration_ms": 500
-    },
-    condition_on_previous_text=False
-)
+                segments, info = model.transcribe(
+                    wav_path,
+                    language="ar",
+                    beam_size=1,
+                    best_of=1,
+                    temperature=0,
+                    vad_filter=True,
+                    vad_parameters={"min_silence_duration_ms": 500},
+                    condition_on_previous_text=False
+                )
 
                 transcribed_text = " ".join(
-                    seg.text.strip()
-                    for seg in segments
-                    if seg.text
+                    seg.text.strip() for seg in segments if seg.text
                 ).strip()
 
-                logger.info(
-                    f"📝 النص من الصوت: {transcribed_text}"
-                )
+                logger.info(f"📝 النص من الصوت: {transcribed_text}")
 
                 if info:
-                    logger.info(
-                        f"🌐 اللغة المكتشفة: {info.language}"
-                    )
+                    logger.info(f"🌐 اللغة المكتشفة: {info.language}")
 
             except Exception as e:
-
-                logger.exception(
-                    f"خطأ بتحويل الصوت لنص: {e}"
-                )
-
-                await message.reply_text(
-                    "⚠️ ما قدرت أفهم الصوت!"
-                )
-
+                logger.exception(f"خطأ بتحويل الصوت لنص: {e}")
+                await message.reply_text("⚠️ ما قدرت أفهم الصوت!")
                 return
 
             # =================================================
@@ -339,181 +232,45 @@ class GhostTelegram:
             # =================================================
 
             if not transcribed_text:
-
-                await message.reply_text(
-                    "⚠️ ما سمعت شي بالصوت!"
-                )
-
+                await message.reply_text("⚠️ ما سمعت شي بالصوت!")
                 return
 
             # =================================================
-            # 6. تحديد اللغة
+            # 6. تمرير الطلب كاملاً لغوست كور
             # =================================================
 
-            lang = (
-                self.personality.detect_language(
-                    transcribed_text
-                )
-                if self.personality
-                else "lb"
+            if not self.core:
+                await message.reply_text("⚠️ العقل المركزي غير متصل!")
+                return
+
+            reply_text, voice_path = await self.core.handle_incoming(
+                platform="telegram",
+                platform_user_id=str(user.id),
+                sender_name=sender_name,
+                text=transcribed_text,
+                response_type="voice",
+                is_owner=is_owner,
             )
 
-            sender_name = user.first_name or ""
-
             # =================================================
-            # 7. حفظ الكلام في الذاكرة
+            # 7. إرسال الرد الصوتي ثم النصي
             # =================================================
 
-            if self.memory:
-
-                self.memory.save_message(
-                    sender=sender_name,
-                    message=f"[صوت] {transcribed_text}",
-                    platform="telegram",
-                    is_owner=is_owner
-                )
-
-            # =================================================
-            # 8. التفكير بالرد
-            # =================================================
-
-            if is_owner:
-
-                if self.personality:
-
-                    self.personality.learn_style(
-                        transcribed_text,
-                        source="owner"
-                    )
-
-                if self.brain:
-
-                    reply = await self.brain.think(
-                        user_message=transcribed_text,
-                        lang=lang,
-                        sender_name=OWNER_NAME,
-                        platform="telegram"
-                    )
-
-                else:
-
-                    reply = "⚠️ العقل مو شغال!"
-
+            if voice_path and isinstance(voice_path, str) and os.path.exists(voice_path):
+                with open(voice_path, "rb") as vf:
+                    await message.reply_voice(vf)
+                await message.reply_text(f"👻 {reply_text}")
             else:
-
-                if self.brain:
-
-                    reply = await self.brain.think(
-                        user_message=transcribed_text,
-                        lang=lang,
-                        sender_name=sender_name,
-                        platform="telegram"
-                    )
-
-                else:
-
-                    reply = "⚠️ Ghost مو شغال حالياً"
-
-            # =================================================
-            # 9. تحويل رد Ghost إلى صوت
-            # =================================================
-
-            try:
-
-                if not self.voice:
-
-                    logger.warning(
-                        "⚠️ GhostVoice غير موجود"
-                    )
-
-                    await message.reply_text(
-                        reply
-                    )
-
-                else:
-
-                    logger.info(
-                        "🔊 Ghost عم يحوّل الرد لصوت..."
-                    )
-
-                    voice_path = await self.voice.speak(
-                        reply,
-                        lang=lang
-                    )
-
-                    if (
-                        voice_path
-                        and isinstance(voice_path, str)
-                        and os.path.exists(voice_path)
-                    ):
-
-                        # -------------------------------------
-                        # إرسال Voice Note
-                        # -------------------------------------
-
-                        with open(
-                            voice_path,
-                            "rb"
-                        ) as vf:
-
-                            await message.reply_voice(
-                                vf
-                            )
-
-                        # -------------------------------------
-                        # إرسال النص أيضًا
-                        # -------------------------------------
-
-                        await message.reply_text(
-                            f"👻 {reply}"
-                        )
-
-                    else:
-
-                        logger.warning(
-                            f"⚠️ ملف الصوت غير موجود: {voice_path}"
-                        )
-
-                        await message.reply_text(
-                            reply
-                        )
-
-            except Exception as e:
-
-                logger.exception(
-                    f"خطأ بصوت الرد: {e}"
-                )
-
-                await message.reply_text(
-                    reply
-                )
-
-            # =================================================
-            # 10. حفظ رد Ghost
-            # =================================================
-
-            if self.memory:
-
-                self.memory.save_message(
-                    sender="Ghost",
-                    message=reply,
-                    platform="telegram",
-                    is_ghost=True
-                )
+                await message.reply_text(reply_text)
 
         finally:
 
             # =================================================
-            # 11. تنظيف الملفات المؤقتة
+            # 8. تنظيف الملفات المؤقتة
             # =================================================
 
             try:
-
-                shutil.rmtree(
-                    tmp_dir,
-                    ignore_errors=True
-                )
-
+                shutil.rmtree(tmp_dir, ignore_errors=True)
             except Exception:
                 pass
 
@@ -521,28 +278,17 @@ class GhostTelegram:
     # أمر /start
     # ========================================================
 
-    async def handle_start(
-        self,
-        update: Update,
-        context: ContextTypes.DEFAULT_TYPE
-    ):
+    async def handle_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """أمر /start"""
 
         user = update.effective_user
-
-        is_owner = (
-            str(user.id)
-            == str(OWNER_TELEGRAM_ID)
-        )
+        is_owner = str(user.id) == str(OWNER_TELEGRAM_ID)
 
         if is_owner:
-
             greeting = (
                 self.personality.get_greeting("lb")
-                if self.personality
-                else "أهلاً!"
+                if self.personality else "أهلاً!"
             )
-
             await update.message.reply_text(
                 f"{greeting}\n\n"
                 f"أنا Ghost — الشبح 👻\n"
@@ -552,9 +298,7 @@ class GhostTelegram:
                 f"شغّلني بأمر: /on\n"
                 f"وقّفني بأمر: /off"
             )
-
         else:
-
             await update.message.reply_text(
                 "أهلاً! 👻 أنا Ghost — مساعد شخصي.\n"
                 "كيف فيني ساعدك؟"
@@ -564,34 +308,21 @@ class GhostTelegram:
     # أمر /on
     # ========================================================
 
-    async def handle_activate(
-        self,
-        update: Update,
-        context: ContextTypes.DEFAULT_TYPE
-    ):
+    async def handle_activate(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """أمر /on — تفعيل Ghost"""
 
         user = update.effective_user
-
-        is_owner = (
-            str(user.id)
-            == str(OWNER_TELEGRAM_ID)
-        )
+        is_owner = str(user.id) == str(OWNER_TELEGRAM_ID)
 
         if not is_owner:
-
-            await update.message.reply_text(
-                "⛔ هاد الأمر للمالك فقط!"
-            )
-
+            await update.message.reply_text("⛔ هاد الأمر للمالك فقط!")
             return
 
         context.bot_data["ghost_active"] = True
 
         greeting = (
             self.personality.get_greeting("lb")
-            if self.personality
-            else "شبح مفعّل!"
+            if self.personality else "شبح مفعّل!"
         )
 
         await update.message.reply_text(
@@ -604,34 +335,21 @@ class GhostTelegram:
     # أمر /off
     # ========================================================
 
-    async def handle_deactivate(
-        self,
-        update: Update,
-        context: ContextTypes.DEFAULT_TYPE
-    ):
+    async def handle_deactivate(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """أمر /off — إيقاف Ghost"""
 
         user = update.effective_user
-
-        is_owner = (
-            str(user.id)
-            == str(OWNER_TELEGRAM_ID)
-        )
+        is_owner = str(user.id) == str(OWNER_TELEGRAM_ID)
 
         if not is_owner:
-
-            await update.message.reply_text(
-                "⛔ هاد الأمر للمالك فقط!"
-            )
-
+            await update.message.reply_text("⛔ هاد الأمر للمالك فقط!")
             return
 
         context.bot_data["ghost_active"] = False
 
         farewell = (
             self.personality.get_farewell("lb")
-            if self.personality
-            else "مع السلامة!"
+            if self.personality else "مع السلامة!"
         )
 
         await update.message.reply_text(
@@ -643,16 +361,9 @@ class GhostTelegram:
     # تحويل رسالة للمالك
     # ========================================================
 
-    async def forward_to_owner(
-        self,
-        message
-    ):
+    async def forward_to_owner(self, message):
         """تحويل رسالة لنصال على تيليجرام"""
-
-        logger.info(
-            f"تحويل لنصال على تيليجرام: {message[:50]}"
-        )
-
+        logger.info(f"تحويل لنصال على تيليجرام: {message[:50]}")
         return True
 
     # ========================================================
@@ -661,6 +372,4 @@ class GhostTelegram:
 
     def get_status(self):
         """حالة تيليجرام"""
-
-        return "✅ تيليجرام جاهز — نص + فويس نوت"
-```
+        return "✅ تيليجرام جاهز — نص + فويس نوت (عبر غوست كور)"
