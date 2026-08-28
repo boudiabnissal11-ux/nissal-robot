@@ -25,7 +25,6 @@ class GhostBrain:
         self.max_tokens = LLM_MAX_TOKENS
 
         # سجلّان منفصلان — كل لغة إلها سجلها الخاص
-        # هيك ما بينلخبط أسلوب الفصحى مع اللبناني
         self.conversation_history_ar = []
         self.conversation_history_lb = []
 
@@ -48,7 +47,6 @@ class GhostBrain:
         """بناء قائمة الرسائل للإرسال"""
         messages = []
 
-        # Prompt النظام
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         elif self.personality:
@@ -59,20 +57,17 @@ class GhostBrain:
                 )
             })
 
-        # سياق الذاكرة
         if context:
             messages.append({
                 "role": "system",
                 "content": f"سياق من الذاكرة:\n{context}"
             })
 
-        # سجل المحادثة — فقط من نفس اللغة (آخر 6 رسائل، أخف وأسرع)
         history = self._get_history(lang)
         recent = history[-6:]
         for msg in recent:
             messages.append(msg)
 
-        # رسالة المستخدم
         messages.append({"role": "user", "content": user_message})
 
         return messages
@@ -94,17 +89,16 @@ class GhostBrain:
     async def think(self, user_message, lang=None, sender_name=None,
                     platform="telegram", system_prompt=None):
         """التفكير — توليد رد"""
+        print(f"🧠 GhostBrain.think() بدأ — lang={lang}")
+
         if not self.api_key:
             return "⚠️ ما في مفتاح API — لسّا ما بعرف أحكي!"
 
-        # كشف اللغة فقط لو ما انبعتلناش من غوست كور
         if lang is None and self.personality:
             lang = self.personality.detect_language(user_message)
 
-        # جلب سياق من الذاكرة
         context = self._get_memory_context(user_message)
 
-        # بناء الرسائل
         messages = self._build_messages(
             user_message=user_message,
             system_prompt=system_prompt,
@@ -124,6 +118,8 @@ class GhostBrain:
                 "max_tokens": self.max_tokens,
             }
 
+            print(f"🌐 استدعاء LLM: model={self.model}, max_tokens={self.max_tokens}")
+
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(
                     f"{self.base_url}/chat/completions",
@@ -131,11 +127,12 @@ class GhostBrain:
                     json=payload
                 )
 
+            print(f"✅ LLM رد بـ status={response.status_code}")
+
             if response.status_code == 200:
                 data = response.json()
                 reply = data["choices"][0]["message"]["content"]
 
-                # حفظ بالسجل الصحيح حسب اللغة
                 history = self._get_history(lang)
                 history.append({"role": "user", "content": user_message})
                 history.append({"role": "assistant", "content": reply})
@@ -148,6 +145,7 @@ class GhostBrain:
                 return f"⚠️ خطأ من LLM: {response.status_code}"
 
         except Exception as e:
+            print(f"❌ خطأ بـ think(): {e}")
             return f"⚠️ خطأ بالاتصال: {str(e)}"
 
     def think_sync(self, user_message, lang=None, sender_name=None,
